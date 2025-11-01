@@ -1,245 +1,135 @@
-const request = require('supertest');
-const app = require('../../src/app');
+const authService = require('../../src/services/authService');
+const tripService = require('../../src/services/tripService');
+const travelerService = require('../../src/services/travelerService');
+const documentService = require('../../src/services/documentService');
+const checklistService = require('../../src/services/checklistService');
 const { DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS } = require('../../src/config/constants');
 
-let server;
-let api;
+const context = { ipAddress: '127.0.0.1', userAgent: 'jest-test-suite' };
 
-const registerUser = async (overrides = {}) => {
-  const payload = {
-    email: overrides.email || `owner-${Math.random().toString(36).slice(2)}@example.com`,
+const registerOwner = async () => {
+  const credentials = {
+    email: `owner-${Math.random().toString(36).slice(2)}@example.com`,
     password: 'Sup3r$ecure!',
     firstName: 'Jordan',
     lastName: 'Taylor',
   };
 
-  const { body } = await api.post('/api/v1/auth/register').send(payload);
-
-  return {
-    accessToken: body.data.tokens.accessToken,
-    user: body.data.user,
-  };
+  const { user } = await authService.register(credentials, context);
+  return user.id;
 };
 
-const createTrip = async (token, overrides = {}) => {
-  const payload = {
-    name: 'Exploration Voyage',
-    destination: 'Lisbon',
-    startDate: '2026-03-10',
-    endDate: '2026-03-20',
-    budgetCurrency: 'USD',
-    budgetAmount: '2500.00',
-    description: 'Team retreat with multiple excursions',
-    ...overrides,
-  };
-
-  const { body } = await api
-    .post('/api/v1/trips')
-    .set('Authorization', `Bearer ${token}`)
-    .send(payload);
-
-  return body.data;
-};
-
-const createTraveler = async (token, tripId, overrides = {}) => {
-  const payload = {
-    fullName: 'Morgan Lee',
-    email: 'morgan@example.com',
-    passportNumber: 'X1234567',
-    passportCountry: 'US',
-    passportExpiry: '2027-05-01',
-    ...overrides,
-  };
-
-  const { body } = await api
-    .post(`/api/v1/trips/${tripId}/travelers`)
-    .set('Authorization', `Bearer ${token}`)
-    .send(payload);
-
-  return body.data;
-};
-
-describe('Travelers, Documents, and Checklists API', () => {
-  beforeAll(async () => {
-    server = await new Promise((resolve, reject) => {
-      const listener = app
-        .listen(0, '127.0.0.1', () => resolve(listener))
-        .on('error', (error) => reject(error));
-    });
-    api = request.agent(server);
-  });
-
-  afterAll(async () => {
-    if (server) {
-      await new Promise((resolve) => server.close(resolve));
-    }
-  });
-
+describe('Travelers, Documents, and Checklists Service Integration', () => {
   it('manages travelers for a trip', async () => {
-    const { accessToken } = await registerUser();
-    const trip = await createTrip(accessToken);
+    const ownerId = await registerOwner();
+    const trip = await tripService.createTrip(ownerId, {
+      name: 'Exploration Voyage',
+      destination: 'Lisbon',
+      startDate: '2026-03-10',
+      endDate: '2026-03-20',
+    });
 
-    const createResponse = await api
-      .post(`/api/v1/trips/${trip.id}/travelers`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        fullName: 'Alex Rivera',
-        email: 'alex@example.com',
-        phone: '+1 555-100-2000',
-        passportCountry: 'CA',
-      })
-      .expect(201);
+    const traveler = await travelerService.createTraveler(ownerId, trip.id, {
+      fullName: 'Alex Rivera',
+      email: 'alex@example.com',
+      phone: '+1 555-100-2000',
+      passportCountry: 'CA',
+    });
 
-    expect(createResponse.body.data.fullName).toBe('Alex Rivera');
-    const travelerId = createResponse.body.data.id;
+    expect(traveler.fullName).toBe('Alex Rivera');
 
-    const listResponse = await api
-      .get(`/api/v1/trips/${trip.id}/travelers`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const travelers = await travelerService.listTravelers(ownerId, trip.id);
+    expect(travelers).toHaveLength(1);
+    expect(travelers[0].documents).toEqual([]);
 
-    expect(listResponse.body.data).toHaveLength(1);
-    expect(listResponse.body.data[0].documents).toEqual([]);
+    const updated = await travelerService.updateTraveler(ownerId, trip.id, traveler.id, {
+      preferredName: 'Lex',
+      emergencyContactName: 'Jamie Rivera',
+    });
 
-    const updateResponse = await api
-      .patch(`/api/v1/trips/${trip.id}/travelers/${travelerId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        preferredName: 'Lex',
-        emergencyContactName: 'Jamie Rivera',
-      })
-      .expect(200);
+    expect(updated.preferredName).toBe('Lex');
 
-    expect(updateResponse.body.data.preferredName).toBe('Lex');
-    expect(updateResponse.body.data.emergencyContactName).toBe('Jamie Rivera');
+    await travelerService.deleteTraveler(ownerId, trip.id, traveler.id);
 
-    await api
-      .delete(`/api/v1/trips/${trip.id}/travelers/${travelerId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(204);
-
-    const afterDelete = await api
-      .get(`/api/v1/trips/${trip.id}/travelers`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    expect(afterDelete.body.data).toHaveLength(0);
+    const afterDelete = await travelerService.listTravelers(ownerId, trip.id);
+    expect(afterDelete).toHaveLength(0);
   });
 
   it('aggregates documents for travelers', async () => {
-    const { accessToken } = await registerUser();
-    const trip = await createTrip(accessToken);
-    const traveler = await createTraveler(accessToken, trip.id);
+    const ownerId = await registerOwner();
+    const trip = await tripService.createTrip(ownerId, {
+      name: 'Documentation Drill',
+      destination: 'Tokyo',
+    });
 
-    const createDocResponse = await api
-      .post(`/api/v1/travelers/${traveler.id}/documents`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        type: 'visa',
-        identifier: 'VIS-9981',
-        issuingCountry: 'PT',
-        issuedDate: '2025-01-01',
-        expiryDate: '2026-01-01',
-        status: 'approved',
-      })
-      .expect(201);
+    const traveler = await travelerService.createTraveler(ownerId, trip.id, {
+      fullName: 'Morgan Lee',
+      email: 'morgan@example.com',
+    });
 
-    expect(createDocResponse.body.data.type).toBe('visa');
-    const documentId = createDocResponse.body.data.id;
+    const document = await documentService.createDocument(ownerId, traveler.id, {
+      type: 'visa',
+      identifier: 'VIS-9981',
+      issuingCountry: 'PT',
+      issuedDate: '2025-01-01',
+      expiryDate: '2026-01-01',
+      status: 'approved',
+    });
 
-    const listDocsResponse = await api
-      .get(`/api/v1/trips/${trip.id}/documents`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    expect(document.type).toBe('visa');
 
-    expect(listDocsResponse.body.data).toHaveLength(1);
-    expect(listDocsResponse.body.data[0].traveler.fullName).toBe(traveler.fullName);
+    const documents = await documentService.listDocumentsByTrip(ownerId, trip.id);
+    expect(documents).toHaveLength(1);
+    expect(documents[0].traveler.fullName).toBe('Morgan Lee');
 
-    const updateDocResponse = await api
-      .patch(`/api/v1/documents/${documentId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ status: 'expiring_soon' })
-      .expect(200);
+    const updated = await documentService.updateDocument(ownerId, document.id, {
+      status: 'expiring_soon',
+    });
+    expect(updated.status).toBe('expiring_soon');
 
-    expect(updateDocResponse.body.data.status).toBe('expiring_soon');
+    await documentService.deleteDocument(ownerId, document.id);
 
-    await api
-      .delete(`/api/v1/documents/${documentId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(204);
-
-    const docsAfterDelete = await api
-      .get(`/api/v1/trips/${trip.id}/documents`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    expect(docsAfterDelete.body.data).toHaveLength(0);
+    const afterDelete = await documentService.listDocumentsByTrip(ownerId, trip.id);
+    expect(afterDelete).toHaveLength(0);
   });
 
   it('manages checklist categories and items including completion toggles', async () => {
-    const { accessToken } = await registerUser();
-    const trip = await createTrip(accessToken);
-    const traveler = await createTraveler(accessToken, trip.id, {
-      fullName: 'Checklist Owner',
+    const ownerId = await registerOwner();
+    const trip = await tripService.createTrip(ownerId, {
+      name: 'Checklist Sprint',
+      destination: 'Reykjavík',
     });
 
-    const boardResponse = await api
-      .get(`/api/v1/trips/${trip.id}/checklists`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+    const traveler = await travelerService.createTraveler(ownerId, trip.id, {
+      fullName: 'Checklist Owner',
+      email: 'owner@example.com',
+    });
 
-    expect(boardResponse.body.data).toHaveLength(DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS.length);
+    const board = await checklistService.getChecklistBoard(ownerId, trip.id);
+    expect(board).toHaveLength(DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS.length);
 
-    const newCategoryResponse = await api
-      .post(`/api/v1/trips/${trip.id}/checklists`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        name: 'Logistics',
-        description: 'Transportation and lodging tasks',
-      })
-      .expect(201);
+    const category = await checklistService.createCategory(ownerId, trip.id, {
+      name: 'Logistics',
+      description: 'Transportation tasks',
+    });
 
-    expect(newCategoryResponse.body.data.name).toBe('Logistics');
-    const categoryId = newCategoryResponse.body.data.id;
+    const item = await checklistService.createItem(ownerId, category.id, {
+      title: 'Book airport transfer',
+      priority: 'high',
+      assigneeTravelerId: traveler.id,
+      dueDate: '2026-02-25',
+    });
 
-    const createItemResponse = await api
-      .post(`/api/v1/checklists/categories/${categoryId}/items`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        title: 'Book flights',
-        priority: 'high',
-        dueDate: '2025-12-01',
-        assigneeTravelerId: traveler.id,
-        notes: 'Use corporate portal for discounts',
-      })
-      .expect(201);
+    expect(item.title).toBe('Book airport transfer');
+    expect(item.assigneeTravelerId).toBe(traveler.id);
 
-    expect(createItemResponse.body.data.priority).toBe('high');
-    const itemId = createItemResponse.body.data.id;
+    const completed = await checklistService.setItemCompletion(ownerId, item.id, true);
+    expect(completed.completedAt).not.toBeNull();
 
-    const completionResponse = await api
-      .post(`/api/v1/checklists/items/${itemId}/complete`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ completed: true })
-      .expect(200);
+    await checklistService.deleteItem(ownerId, item.id);
 
-    expect(completionResponse.body.data.completedAt).not.toBeNull();
-
-    await api
-      .delete(`/api/v1/checklists/items/${itemId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(204);
-
-    const finalBoardResponse = await api
-      .get(`/api/v1/trips/${trip.id}/checklists`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    const logisticsCategory = finalBoardResponse.body.data.find(
-      (category) => category.id === categoryId
-    );
-
-    expect(logisticsCategory.items).toHaveLength(0);
+    const refreshedBoard = await checklistService.getChecklistBoard(ownerId, trip.id);
+    const logistics = refreshedBoard.find((column) => column.id === category.id);
+    expect(logistics.items).toHaveLength(0);
   });
 });
-

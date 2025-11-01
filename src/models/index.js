@@ -36,6 +36,11 @@ db.Traveler = require('./Traveler')(sequelize, DataTypes);
 db.Document = require('./Document')(sequelize, DataTypes);
 db.ChecklistCategory = require('./ChecklistCategory')(sequelize, DataTypes);
 db.ChecklistItem = require('./ChecklistItem')(sequelize, DataTypes);
+db.TripCollaborator = require('./TripCollaborator')(sequelize, DataTypes);
+db.ShareLink = require('./ShareLink')(sequelize, DataTypes);
+db.ShareLinkAudit = require('./ShareLinkAudit')(sequelize, DataTypes);
+db.Expense = require('./Expense')(sequelize, DataTypes);
+db.ItineraryItem = require('./ItineraryItem')(sequelize, DataTypes);
 
 Object.keys(db)
   .filter((modelName) => modelName[0] === modelName[0].toUpperCase())

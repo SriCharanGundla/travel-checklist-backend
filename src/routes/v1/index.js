@@ -5,6 +5,10 @@ const dashboardRoutes = require('./dashboard.routes');
 const travelerRoutes = require('./traveler.routes');
 const documentRoutes = require('./document.routes');
 const checklistRoutes = require('./checklist.routes');
+const collaboratorRoutes = require('./collaborator.routes');
+const shareLinkRoutes = require('./share-link.routes');
+const expenseRoutes = require('./expense.routes');
+const itineraryRoutes = require('./itinerary.routes');
 
 const router = express.Router();
 
@@ -14,5 +18,9 @@ router.use('/dashboard', dashboardRoutes);
 router.use(travelerRoutes);
 router.use(documentRoutes);
 router.use(checklistRoutes);
+router.use(collaboratorRoutes);
+router.use(shareLinkRoutes);
+router.use(expenseRoutes);
+router.use(itineraryRoutes);
 
 module.exports = router;

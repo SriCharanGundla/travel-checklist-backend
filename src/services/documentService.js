@@ -1,6 +1,7 @@
-const { Trip, Traveler, Document } = require('../models');
+const { Traveler, Document, Trip } = require('../models');
 const AppError = require('../utils/AppError');
-const { DOCUMENT_TYPES, DOCUMENT_STATUS } = require('../config/constants');
+const { DOCUMENT_TYPES, DOCUMENT_STATUS, PERMISSION_LEVELS } = require('../config/constants');
+const { ensureTripAccess } = require('./authorizationService');
 
 const toNullableString = (value) => {
   if (value === undefined || value === null) {
@@ -52,41 +53,31 @@ const resolveDocumentStatus = (status, fallback = DOCUMENT_STATUS.PENDING) => {
   return match || fallback;
 };
 
-const ensureTripOwnership = async (ownerId, tripId) => {
-  const trip = await Trip.findOne({
-    where: {
-      id: tripId,
-      ownerId,
-    },
-  });
-
-  if (!trip) {
-    throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
-  }
-
-  return trip;
+const ensureTripPermission = async (userId, tripId, requiredPermission) => {
+  await ensureTripAccess(userId, tripId, { requiredPermission });
 };
 
-const ensureTravelerOwnership = async (ownerId, travelerId) => {
+const ensureTravelerForUser = async (userId, travelerId, requiredPermission) => {
   const traveler = await Traveler.findOne({
     where: { id: travelerId },
     include: [
       {
         model: Trip,
         as: 'trip',
-        attributes: ['id', 'ownerId'],
+        attributes: ['id'],
       },
     ],
   });
 
-  if (!traveler || traveler.trip.ownerId !== ownerId) {
+  if (!traveler) {
     throw new AppError('Traveler not found', 404, 'TRAVELER.NOT_FOUND');
   }
 
+  await ensureTripPermission(userId, traveler.tripId, requiredPermission);
   return traveler;
 };
 
-const ensureDocumentOwnership = async (ownerId, documentId) => {
+const ensureDocumentForUser = async (userId, documentId, requiredPermission) => {
   const document = await Document.findOne({
     where: { id: documentId },
     include: [
@@ -97,22 +88,23 @@ const ensureDocumentOwnership = async (ownerId, documentId) => {
           {
             model: Trip,
             as: 'trip',
-            attributes: ['id', 'ownerId'],
+            attributes: ['id'],
           },
         ],
       },
     ],
   });
 
-  if (!document || !document.traveler || document.traveler.trip.ownerId !== ownerId) {
+  if (!document || !document.traveler || !document.traveler.trip) {
     throw new AppError('Document not found', 404, 'DOCUMENT.NOT_FOUND');
   }
 
+  await ensureTripPermission(userId, document.traveler.trip.id, requiredPermission);
   return document;
 };
 
-const listDocumentsByTrip = async (ownerId, tripId) => {
-  await ensureTripOwnership(ownerId, tripId);
+const listDocumentsByTrip = async (userId, tripId) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.VIEW);
 
   const documents = await Document.findAll({
     include: [
@@ -139,8 +131,8 @@ const listDocumentsByTrip = async (ownerId, tripId) => {
   return documents.map((document) => document.get({ plain: true }));
 };
 
-const createDocument = async (ownerId, travelerId, payload) => {
-  const traveler = await ensureTravelerOwnership(ownerId, travelerId);
+const createDocument = async (userId, travelerId, payload) => {
+  const traveler = await ensureTravelerForUser(userId, travelerId, PERMISSION_LEVELS.EDIT);
 
   const document = await Document.create({
     travelerId: traveler.id,
@@ -157,8 +149,8 @@ const createDocument = async (ownerId, travelerId, payload) => {
   return document.get({ plain: true });
 };
 
-const updateDocument = async (ownerId, documentId, updates) => {
-  const document = await ensureDocumentOwnership(ownerId, documentId);
+const updateDocument = async (userId, documentId, updates) => {
+  const document = await ensureDocumentForUser(userId, documentId, PERMISSION_LEVELS.EDIT);
 
   const setters = {
     type: (value) => {
@@ -199,8 +191,8 @@ const updateDocument = async (ownerId, documentId, updates) => {
   return document.get({ plain: true });
 };
 
-const deleteDocument = async (ownerId, documentId) => {
-  const document = await ensureDocumentOwnership(ownerId, documentId);
+const deleteDocument = async (userId, documentId) => {
+  const document = await ensureDocumentForUser(userId, documentId, PERMISSION_LEVELS.EDIT);
   await document.destroy();
 };
 
@@ -210,4 +202,3 @@ module.exports = {
   updateDocument,
   deleteDocument,
 };
-

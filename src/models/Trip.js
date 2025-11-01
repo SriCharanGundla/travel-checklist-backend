@@ -89,6 +89,31 @@ module.exports = (sequelize, DataTypes) => {
       as: 'checklistCategories',
       foreignKey: 'tripId',
     });
+
+    Trip.hasMany(models.TripCollaborator, {
+      as: 'collaborators',
+      foreignKey: 'tripId',
+    });
+
+    Trip.hasMany(models.ShareLink, {
+      as: 'shareLinks',
+      foreignKey: 'tripId',
+    });
+
+    Trip.hasMany(models.Expense, {
+      as: 'expenses',
+      foreignKey: 'tripId',
+    });
+
+    Trip.hasMany(models.ItineraryItem, {
+      as: 'itineraryItems',
+      foreignKey: 'tripId',
+    });
+
+    Trip.hasMany(models.ShareLinkAudit, {
+      as: 'shareLinkAuditEntries',
+      foreignKey: 'tripId',
+    });
   };
 
   return Trip;

@@ -1,5 +1,7 @@
-const { Trip, Traveler, Document, ChecklistItem } = require('../models');
+const { Traveler, Document, ChecklistItem } = require('../models');
 const AppError = require('../utils/AppError');
+const { PERMISSION_LEVELS } = require('../config/constants');
+const { ensureTripAccess } = require('./authorizationService');
 
 const toNullableString = (value) => {
   if (value === undefined || value === null) {
@@ -31,24 +33,11 @@ const normalizeDate = (value, fieldName) => {
   return value;
 };
 
-const ensureTrip = async (ownerId, tripId) => {
-  const trip = await Trip.findOne({
-    where: {
-      id: tripId,
-      ownerId,
-    },
-  });
-
-  if (!trip) {
-    throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
-  }
-
-  return trip;
+const ensureTripPermission = async (userId, tripId, requiredPermission) => {
+  await ensureTripAccess(userId, tripId, { requiredPermission });
 };
 
-const findTraveler = async (ownerId, tripId, travelerId) => {
-  await ensureTrip(ownerId, tripId);
-
+const findTraveler = async (tripId, travelerId) => {
   const traveler = await Traveler.findOne({
     where: {
       id: travelerId,
@@ -63,8 +52,8 @@ const findTraveler = async (ownerId, tripId, travelerId) => {
   return traveler;
 };
 
-const listTravelers = async (ownerId, tripId) => {
-  await ensureTrip(ownerId, tripId);
+const listTravelers = async (userId, tripId) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.VIEW);
 
   const travelers = await Traveler.findAll({
     where: {
@@ -92,8 +81,8 @@ const listTravelers = async (ownerId, tripId) => {
   return travelers.map((traveler) => traveler.get({ plain: true }));
 };
 
-const createTraveler = async (ownerId, tripId, payload) => {
-  await ensureTrip(ownerId, tripId);
+const createTraveler = async (userId, tripId, payload) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.EDIT);
 
   const traveler = await Traveler.create({
     tripId,
@@ -118,8 +107,9 @@ const createTraveler = async (ownerId, tripId, payload) => {
   return traveler.get({ plain: true });
 };
 
-const updateTraveler = async (ownerId, tripId, travelerId, updates) => {
-  const traveler = await findTraveler(ownerId, tripId, travelerId);
+const updateTraveler = async (userId, tripId, travelerId, updates) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.EDIT);
+  const traveler = await findTraveler(tripId, travelerId);
 
   const setters = {
     fullName: (value) => {
@@ -163,8 +153,9 @@ const updateTraveler = async (ownerId, tripId, travelerId, updates) => {
   return traveler.get({ plain: true });
 };
 
-const deleteTraveler = async (ownerId, tripId, travelerId) => {
-  const traveler = await findTraveler(ownerId, tripId, travelerId);
+const deleteTraveler = async (userId, tripId, travelerId) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.EDIT);
+  const traveler = await findTraveler(tripId, travelerId);
   await traveler.destroy();
 };
 

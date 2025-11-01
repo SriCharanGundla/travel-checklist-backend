@@ -78,6 +78,31 @@ module.exports = (sequelize, DataTypes) => {
       as: 'passwordResetTokens',
       foreignKey: 'userId',
     });
+
+    User.hasMany(models.TripCollaborator, {
+      as: 'collaborations',
+      foreignKey: 'userId',
+    });
+
+    User.hasMany(models.TripCollaborator, {
+      as: 'sentInvitations',
+      foreignKey: 'inviterId',
+    });
+
+    User.hasMany(models.ShareLink, {
+      as: 'createdShareLinks',
+      foreignKey: 'createdBy',
+    });
+
+    User.hasMany(models.Expense, {
+      as: 'authoredExpenses',
+      foreignKey: 'createdBy',
+    });
+
+    User.hasMany(models.ShareLinkAudit, {
+      as: 'shareLinkAuditEvents',
+      foreignKey: 'performedBy',
+    });
   };
 
   User.prototype.toSafeJSON = function toSafeJSON() {

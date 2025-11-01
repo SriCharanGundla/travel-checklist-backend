@@ -1,11 +1,14 @@
 const { Op } = require('sequelize');
-const { Trip, ChecklistCategory } = require('../models');
+const { Trip, ChecklistCategory, TripCollaborator } = require('../models');
 const AppError = require('../utils/AppError');
 const {
   TRIP_STATUS,
   TRIP_TYPES,
   DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS,
+  PERMISSION_LEVELS,
+  COLLABORATOR_STATUS,
 } = require('../config/constants');
+const { ensureTripAccess, ensureTripOwner } = require('./authorizationService');
 
 const toNullableString = (value) => {
   if (value === undefined || value === null) {
@@ -67,21 +70,57 @@ const validateDateRange = (startDate, endDate) => {
   }
 };
 
-const listTrips = async (ownerId, filters = {}) => {
-  const where = {
-    ownerId,
+const buildTripResponse = (tripInstance, context = {}) => {
+  const plain = tripInstance.get({ plain: true });
+
+  if (plain.collaborators) {
+    delete plain.collaborators;
+  }
+
+  let permissionLevel = context.permissionLevel || PERMISSION_LEVELS.ADMIN;
+  let role = context.role || 'owner';
+
+  if (context.collaborator) {
+    permissionLevel = context.collaborator.permissionLevel;
+    role = 'collaborator';
+  } else if (context.userId && plain.ownerId !== context.userId) {
+    const collaboratorEntry = tripInstance.collaborators
+      ? tripInstance.collaborators.find((col) => col.userId === context.userId)
+      : null;
+
+    if (collaboratorEntry) {
+      permissionLevel = collaboratorEntry.permissionLevel;
+      role = 'collaborator';
+    }
+  }
+
+  return {
+    ...plain,
+    permission: {
+      role,
+      level: permissionLevel,
+    },
   };
+};
+
+const listTrips = async (userId, filters = {}) => {
+  const conditions = [];
+
+  const accessCondition = {
+    [Op.or]: [{ ownerId: userId }, { '$collaborators.user_id$': userId }],
+  };
+  conditions.push(accessCondition);
 
   const normalizedStatus =
     typeof filters.status === 'string' ? filters.status.trim().toLowerCase() : undefined;
   if (normalizedStatus && Object.values(TRIP_STATUS).includes(normalizedStatus)) {
-    where.status = normalizedStatus;
+    conditions.push({ status: normalizedStatus });
   }
 
   const normalizedType =
     typeof filters.type === 'string' ? filters.type.trim().toLowerCase() : undefined;
   if (normalizedType && Object.values(TRIP_TYPES).includes(normalizedType)) {
-    where.type = normalizedType;
+    conditions.push({ type: normalizedType });
   }
 
   const searchTerm = typeof filters.search === 'string' ? filters.search.trim() : null;
@@ -93,29 +132,46 @@ const listTrips = async (ownerId, filters = {}) => {
           : Op.like
         : Op.like;
 
-    where[Op.or] = [
-      { name: { [likeOperator]: `%${searchTerm}%` } },
-      { destination: { [likeOperator]: `%${searchTerm}%` } },
-    ];
+    conditions.push({
+      [Op.or]: [
+        { name: { [likeOperator]: `%${searchTerm}%` } },
+        { destination: { [likeOperator]: `%${searchTerm}%` } },
+      ],
+    });
   }
 
   if (filters.startDate) {
-    where.startDate = { [Op.gte]: filters.startDate };
+    conditions.push({ startDate: { [Op.gte]: filters.startDate } });
   }
 
   if (filters.endDate) {
-    where.endDate = { [Op.lte]: filters.endDate };
+    conditions.push({ endDate: { [Op.lte]: filters.endDate } });
   }
 
   const trips = await Trip.findAll({
-    where,
+    where: {
+      [Op.and]: conditions,
+    },
+    include: [
+      {
+        model: TripCollaborator,
+        as: 'collaborators',
+        attributes: ['id', 'userId', 'permissionLevel', 'status'],
+        required: false,
+        where: {
+          userId,
+          status: COLLABORATOR_STATUS.ACCEPTED,
+        },
+      },
+    ],
+    distinct: true,
     order: [
       ['startDate', 'ASC'],
       ['createdAt', 'DESC'],
     ],
   });
 
-  return trips.map((trip) => trip.get({ plain: true }));
+  return trips.map((trip) => buildTripResponse(trip, { userId }));
 };
 
 const buildDefaultCategories = (tripId) =>
@@ -159,41 +215,33 @@ const createTrip = async (ownerId, payload) => {
     return createdTrip;
   });
 
-  return trip.get({ plain: true });
-};
-
-const getTripById = async (ownerId, tripId) => {
-  const trip = await Trip.findOne({
-    where: {
-      id: tripId,
-      ownerId,
-    },
+  return buildTripResponse(trip, {
+    role: 'owner',
+    permissionLevel: PERMISSION_LEVELS.ADMIN,
   });
-
-  if (!trip) {
-    throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
-  }
-
-  return trip.get({ plain: true });
 };
 
-const updateTrip = async (ownerId, tripId, updates) => {
+const getTripById = async (userId, tripId) => {
+  const { trip, role, collaborator, permissionLevel } = await ensureTripAccess(userId, tripId);
+
+  return buildTripResponse(trip, {
+    role,
+    collaborator,
+    permissionLevel,
+    userId,
+  });
+};
+
+const updateTrip = async (userId, tripId, updates) => {
   const hasStartDate = Object.prototype.hasOwnProperty.call(updates, 'startDate');
   const hasEndDate = Object.prototype.hasOwnProperty.call(updates, 'endDate');
 
   const normalizedStartDate = hasStartDate ? toNullableString(updates.startDate) : undefined;
   const normalizedEndDate = hasEndDate ? toNullableString(updates.endDate) : undefined;
 
-  const trip = await Trip.findOne({
-    where: {
-      id: tripId,
-      ownerId,
-    },
+  const { trip, permissionLevel, role } = await ensureTripAccess(userId, tripId, {
+    requiredPermission: PERMISSION_LEVELS.EDIT,
   });
-
-  if (!trip) {
-    throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
-  }
 
   validateDateRange(
     normalizedStartDate !== undefined ? normalizedStartDate : trip.startDate,
@@ -249,20 +297,14 @@ const updateTrip = async (ownerId, tripId, updates) => {
 
   await trip.save();
 
-  return trip.get({ plain: true });
+  return buildTripResponse(trip, {
+    role,
+    permissionLevel,
+  });
 };
 
 const deleteTrip = async (ownerId, tripId) => {
-  const trip = await Trip.findOne({
-    where: {
-      id: tripId,
-      ownerId,
-    },
-  });
-
-  if (!trip) {
-    throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
-  }
+  const { trip } = await ensureTripOwner(ownerId, tripId);
 
   await trip.destroy();
 };

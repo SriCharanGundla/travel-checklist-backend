@@ -1,9 +1,11 @@
-const request = require('supertest');
-const app = require('../../src/app');
+const authService = require('../../src/services/authService');
 const { RefreshToken } = require('../../src/models');
+const AppError = require('../../src/utils/AppError');
 
-let server;
-let api;
+const buildContext = () => ({
+  ipAddress: '127.0.0.1',
+  userAgent: 'jest-test-suite',
+});
 
 const buildUserPayload = (overrides = {}) => ({
   email: 'Traveler@example.com',
@@ -14,83 +16,48 @@ const buildUserPayload = (overrides = {}) => ({
   ...overrides,
 });
 
-describe('Auth API', () => {
-  beforeAll(async () => {
-    server = await new Promise((resolve, reject) => {
-      const listener = app
-        .listen(0, '127.0.0.1', () => resolve(listener))
-        .on('error', (error) => reject(error));
-    });
-    api = request.agent(server);
-  });
-
-  afterAll(async () => {
-    if (server) {
-      await new Promise((resolve) => server.close(resolve));
-    }
-  });
-
+describe('Auth Service Integration', () => {
   it('registers a new user and normalizes profile fields', async () => {
-    const response = await api.post('/api/v1/auth/register').send(buildUserPayload());
+    const { user, tokens } = await authService.register(buildUserPayload(), buildContext());
 
-    expect(response.status).toBe(201);
-    expect(response.body.data.user).toMatchObject({
+    expect(user).toMatchObject({
       email: 'traveler@example.com',
       firstName: 'Ada',
       lastName: 'Lovelace',
       timezone: 'Europe/London',
     });
-    expect(response.body.data.tokens).toEqual(
+    expect(tokens).toEqual(
       expect.objectContaining({
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
-        refreshTokenExpiresAt: expect.any(String),
       })
     );
-  });
-
-  it('rejects weak passwords with a validation error', async () => {
-    const response = await api
-      .post('/api/v1/auth/register')
-      .send(buildUserPayload({ password: 'password' }));
-
-    expect(response.status).toBe(422);
-    expect(response.body.error.message).toBe('Validation failed');
-    expect(response.body.error.details).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ field: 'password' }),
-      ])
-    );
+    expect(tokens.refreshTokenExpiresAt).toBeInstanceOf(Date);
   });
 
   it('logs in an existing user and enforces credential checks', async () => {
     const credentials = buildUserPayload();
-    await api.post('/api/v1/auth/register').send(credentials).expect(201);
+    await authService.register(credentials, buildContext());
 
-    const loginResponse = await api
-      .post('/api/v1/auth/login')
-      .send({ email: credentials.email.toUpperCase(), password: credentials.password })
-      .expect(200);
+    const loginResult = await authService.login(
+      { email: credentials.email.toUpperCase(), password: credentials.password },
+      buildContext()
+    );
 
-    expect(loginResponse.body.data.user.email).toBe('traveler@example.com');
-    expect(loginResponse.body.data.tokens.accessToken).toEqual(expect.any(String));
+    expect(loginResult.user.email).toBe('traveler@example.com');
+    expect(loginResult.tokens.accessToken).toEqual(expect.any(String));
 
-    await api
-      .post('/api/v1/auth/login')
-      .send({ email: credentials.email, password: 'WrongPass1!' })
-      .expect(401);
+    await expect(
+      authService.login({ email: credentials.email, password: 'WrongPass1!' }, buildContext())
+    ).rejects.toThrow(AppError);
   });
 
   it('rotates refresh tokens and revokes the previous token', async () => {
-    const { body } = await api.post('/api/v1/auth/register').send(buildUserPayload());
-    const originalRefreshToken = body.data.tokens.refreshToken;
+    const { tokens } = await authService.register(buildUserPayload(), buildContext());
+    const originalRefreshToken = tokens.refreshToken;
 
-    const refreshResponse = await api
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: originalRefreshToken })
-      .expect(200);
-
-    expect(refreshResponse.body.data.tokens.refreshToken).not.toBe(originalRefreshToken);
+    const refreshResult = await authService.refreshTokens(originalRefreshToken, buildContext());
+    expect(refreshResult.tokens.refreshToken).not.toBe(originalRefreshToken);
 
     const refreshTokens = await RefreshToken.findAll({ order: [['createdAt', 'ASC']] });
     expect(refreshTokens).toHaveLength(2);

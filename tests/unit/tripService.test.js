@@ -32,6 +32,7 @@ describe('tripService unit', () => {
     expect(trip.type).toBe('leisure');
     expect(Number(trip.budgetAmount)).toBeCloseTo(1200.51);
     expect(trip.budgetCurrency).toBe('EUR');
+    expect(trip.permission).toEqual({ role: 'owner', level: 'admin' });
   });
 
   it('rejects trips with invalid date ranges', async () => {
@@ -58,6 +59,7 @@ describe('tripService unit', () => {
     const trips = await tripService.listTrips(ownerId, { search: 'Japan' });
     expect(trips).toHaveLength(1);
     expect(trips[0].name).toBe('Japan Adventure');
+    expect(trips[0].permission.level).toBe('admin');
   });
 
   it('prevents updates that produce invalid date ranges', async () => {
@@ -76,3 +78,39 @@ describe('tripService unit', () => {
   });
 });
 
+describe('tripService collaborator access', () => {
+  it('allows accepted collaborators to list and access trips with permissions', async () => {
+    const ownerRegistration = await authService.register(
+      { email: 'collab-owner@example.com', password: 'OwnerPass!123' },
+      {}
+    );
+    const collaboratorRegistration = await authService.register(
+      { email: 'teammate@example.com', password: 'TeammatePass!123' },
+      {}
+    );
+
+    const trip = await tripService.createTrip(ownerRegistration.user.id, {
+      name: 'Shared Expedition',
+      destination: 'Peru',
+    });
+
+    const { TripCollaborator } = require('../../src/models');
+
+    await TripCollaborator.create({
+      tripId: trip.id,
+      userId: collaboratorRegistration.user.id,
+      inviterId: ownerRegistration.user.id,
+      email: collaboratorRegistration.user.email,
+      permissionLevel: 'edit',
+      status: 'accepted',
+    });
+
+    const collaboratorTrips = await tripService.listTrips(collaboratorRegistration.user.id, {});
+    expect(collaboratorTrips).toHaveLength(1);
+    expect(collaboratorTrips[0].permission).toEqual({ role: 'collaborator', level: 'edit' });
+
+    const tripDetail = await tripService.getTripById(collaboratorRegistration.user.id, trip.id);
+    expect(tripDetail.permission.level).toBe('edit');
+    expect(tripDetail.permission.role).toBe('collaborator');
+  });
+});

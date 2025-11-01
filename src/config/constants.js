@@ -59,6 +59,11 @@ module.exports = {
     DECLINED: 'declined',
   },
 
+  SHARE_LINK_ACCESS_LEVELS: {
+    VIEW: 'view',
+    CONTRIBUTE: 'contribute',
+  },
+
   EXPENSE_CATEGORIES: {
     ACCOMMODATION: 'accommodation',
     TRANSPORT: 'transport',

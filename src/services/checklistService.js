@@ -1,7 +1,8 @@
 const { Op } = require('sequelize');
-const { Trip, ChecklistCategory, ChecklistItem, Traveler } = require('../models');
+const { ChecklistCategory, ChecklistItem, Traveler } = require('../models');
 const AppError = require('../utils/AppError');
-const { PRIORITY_LEVELS } = require('../config/constants');
+const { PRIORITY_LEVELS, PERMISSION_LEVELS } = require('../config/constants');
+const { ensureTripAccess } = require('./authorizationService');
 const slugify = require('../utils/slugify');
 
 const toNullableString = (value) => {
@@ -44,21 +45,11 @@ const resolvePriority = (priority, fallback = PRIORITY_LEVELS.MEDIUM) => {
   return match || fallback;
 };
 
-const ensureTripOwnership = async (ownerId, tripId) => {
-  const trip = await Trip.findOne({
-    where: { id: tripId, ownerId },
-  });
-
-  if (!trip) {
-    throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
-  }
-
-  return trip;
+const ensureTripPermission = async (userId, tripId, requiredPermission) => {
+  await ensureTripAccess(userId, tripId, { requiredPermission });
 };
 
-const ensureCategoryOwnership = async (ownerId, tripId, categoryId, transaction) => {
-  await ensureTripOwnership(ownerId, tripId);
-
+const getCategoryForTrip = async (tripId, categoryId, transaction) => {
   const category = await ChecklistCategory.findOne({
     where: { id: categoryId, tripId },
     transaction,
@@ -71,7 +62,12 @@ const ensureCategoryOwnership = async (ownerId, tripId, categoryId, transaction)
   return category;
 };
 
-const ensureItemOwnership = async (ownerId, itemId) => {
+const ensureCategoryAccess = async (userId, tripId, categoryId, requiredPermission, transaction) => {
+  await ensureTripPermission(userId, tripId, requiredPermission);
+  return getCategoryForTrip(tripId, categoryId, transaction);
+};
+
+const ensureItemAccess = async (userId, itemId, requiredPermission) => {
   const item = await ChecklistItem.findOne({
     where: { id: itemId },
     include: [
@@ -79,21 +75,15 @@ const ensureItemOwnership = async (ownerId, itemId) => {
         model: ChecklistCategory,
         as: 'category',
         attributes: ['id', 'tripId'],
-        include: [
-          {
-            model: Trip,
-            as: 'trip',
-            attributes: ['id', 'ownerId'],
-          },
-        ],
       },
     ],
   });
 
-  if (!item || !item.category || !item.category.trip || item.category.trip.ownerId !== ownerId) {
+  if (!item || !item.category) {
     throw new AppError('Checklist item not found', 404, 'CHECKLIST.ITEM_NOT_FOUND');
   }
 
+  await ensureTripPermission(userId, item.category.tripId, requiredPermission);
   return item;
 };
 
@@ -138,8 +128,8 @@ const generateUniqueSlug = async (tripId, base, transaction) => {
   return slugCandidate;
 };
 
-const getChecklistBoard = async (ownerId, tripId) => {
-  await ensureTripOwnership(ownerId, tripId);
+const getChecklistBoard = async (userId, tripId) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.VIEW);
 
   const categories = await ChecklistCategory.findAll({
     where: { tripId },
@@ -176,8 +166,8 @@ const getChecklistBoard = async (ownerId, tripId) => {
   return categories.map((category) => category.get({ plain: true }));
 };
 
-const createCategory = async (ownerId, tripId, payload) => {
-  await ensureTripOwnership(ownerId, tripId);
+const createCategory = async (userId, tripId, payload) => {
+  await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.EDIT);
 
   const name =
     typeof payload.name === 'string' && payload.name.trim()
@@ -220,8 +210,8 @@ const createCategory = async (ownerId, tripId, payload) => {
   return category.get({ plain: true });
 };
 
-const updateCategory = async (ownerId, tripId, categoryId, updates) => {
-  const category = await ensureCategoryOwnership(ownerId, tripId, categoryId);
+const updateCategory = async (userId, tripId, categoryId, updates) => {
+  const category = await ensureCategoryAccess(userId, tripId, categoryId, PERMISSION_LEVELS.EDIT);
 
   if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
     const name = toNullableString(updates.name);
@@ -271,8 +261,8 @@ const updateCategory = async (ownerId, tripId, categoryId, updates) => {
   return category.get({ plain: true });
 };
 
-const deleteCategory = async (ownerId, tripId, categoryId) => {
-  const category = await ensureCategoryOwnership(ownerId, tripId, categoryId);
+const deleteCategory = async (userId, tripId, categoryId) => {
+  const category = await ensureCategoryAccess(userId, tripId, categoryId, PERMISSION_LEVELS.EDIT);
 
   await ChecklistCategory.sequelize.transaction(async (transaction) => {
     await ChecklistItem.destroy({
@@ -284,21 +274,16 @@ const deleteCategory = async (ownerId, tripId, categoryId) => {
   });
 };
 
-const createItem = async (ownerId, categoryId, payload) => {
+const createItem = async (userId, categoryId, payload) => {
   const category = await ChecklistCategory.findOne({
     where: { id: categoryId },
-    include: [
-      {
-        model: Trip,
-        as: 'trip',
-        attributes: ['id', 'ownerId'],
-      },
-    ],
   });
 
-  if (!category || category.trip.ownerId !== ownerId) {
+  if (!category) {
     throw new AppError('Checklist category not found', 404, 'CHECKLIST.CATEGORY_NOT_FOUND');
   }
+
+  await ensureTripPermission(userId, category.tripId, PERMISSION_LEVELS.EDIT);
 
   const title =
     typeof payload.title === 'string' && payload.title.trim()
@@ -309,7 +294,7 @@ const createItem = async (ownerId, categoryId, payload) => {
 
   let assignee = null;
   if (payload.assigneeTravelerId) {
-    assignee = await ensureTravelerForTrip(category.trip.id, payload.assigneeTravelerId);
+    assignee = await ensureTravelerForTrip(category.tripId, payload.assigneeTravelerId);
   }
 
   const maxSortOrder = await ChecklistItem.max('sortOrder', {
@@ -330,8 +315,8 @@ const createItem = async (ownerId, categoryId, payload) => {
   return item.get({ plain: true });
 };
 
-const updateItem = async (ownerId, itemId, updates) => {
-  const item = await ensureItemOwnership(ownerId, itemId);
+const updateItem = async (userId, itemId, updates) => {
+  const item = await ensureItemAccess(userId, itemId, PERMISSION_LEVELS.EDIT);
 
   if (Object.prototype.hasOwnProperty.call(updates, 'title')) {
     const title = toNullableString(updates.title);
@@ -396,15 +381,15 @@ const updateItem = async (ownerId, itemId, updates) => {
   return item.get({ plain: true });
 };
 
-const setItemCompletion = async (ownerId, itemId, completed = true) => {
-  const item = await ensureItemOwnership(ownerId, itemId);
+const setItemCompletion = async (userId, itemId, completed = true) => {
+  const item = await ensureItemAccess(userId, itemId, PERMISSION_LEVELS.EDIT);
   item.set('completedAt', completed ? new Date() : null);
   await item.save();
   return item.get({ plain: true });
 };
 
-const deleteItem = async (ownerId, itemId) => {
-  const item = await ensureItemOwnership(ownerId, itemId);
+const deleteItem = async (userId, itemId) => {
+  const item = await ensureItemAccess(userId, itemId, PERMISSION_LEVELS.EDIT);
   await item.destroy();
 };
 
@@ -418,4 +403,3 @@ module.exports = {
   setItemCompletion,
   deleteItem,
 };
-
