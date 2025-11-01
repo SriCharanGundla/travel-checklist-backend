@@ -1,4 +1,5 @@
 const tripService = require('../services/tripService');
+const { exportTripData } = require('../services/exportService');
 const { sendResponse } = require('../utils/response');
 const catchAsync = require('../utils/catchAsync');
 
@@ -53,10 +54,24 @@ const remove = catchAsync(async (req, res) => {
   return res.status(204).send();
 });
 
+const exportData = catchAsync(async (req, res) => {
+  const { format, resource } = req.query;
+  const { buffer, contentType, filename } = await exportTripData(req.auth.userId, req.params.tripId, {
+    format,
+    resource,
+  });
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', buffer.length);
+  return res.send(buffer);
+});
+
 module.exports = {
   list,
   create,
   get,
   update,
   remove,
+  exportData,
 };

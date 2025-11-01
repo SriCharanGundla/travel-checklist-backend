@@ -1,5 +1,7 @@
 const authService = require('../../src/services/authService');
 const tripService = require('../../src/services/tripService');
+const expenseService = require('../../src/services/expenseService');
+const { exportTripData } = require('../../src/services/exportService');
 const AppError = require('../../src/utils/AppError');
 
 const context = { ipAddress: '127.0.0.1', userAgent: 'jest-test-suite' };
@@ -77,5 +79,32 @@ describe('Trip Service Integration', () => {
     const trips = await tripService.listTrips(ownerId, {});
     expect(trips).toHaveLength(1);
     expect(trips[0].name).toBe('Owner Trip');
+  });
+
+  it('exports trip and budget data in requested formats', async () => {
+    const ownerId = await registerUser({ email: 'exporter@example.com' });
+    const trip = await tripService.createTrip(
+      ownerId,
+      createTripPayload({ name: 'Export Trip', budgetAmount: '1500.00', budgetCurrency: 'usd' })
+    );
+
+    await expenseService.createExpense(ownerId, trip.id, {
+      category: 'food',
+      amount: 120.5,
+      currency: 'USD',
+      merchant: 'Cafe Central',
+      notes: 'Team brunch',
+    });
+
+    const pdfExport = await exportTripData(ownerId, trip.id, { resource: 'trip', format: 'pdf' });
+    expect(pdfExport.contentType).toBe('application/pdf');
+    expect(pdfExport.buffer.length).toBeGreaterThan(500);
+    expect(pdfExport.filename).toMatch(/export-trip-trip/);
+
+    const csvExport = await exportTripData(ownerId, trip.id, { resource: 'budget', format: 'csv' });
+    expect(csvExport.contentType).toBe('text/csv');
+    const csvString = csvExport.buffer.toString('utf-8');
+    expect(csvString).toContain('Expenses');
+    expect(csvString).toContain('Cafe Central');
   });
 });

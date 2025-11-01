@@ -8,11 +8,12 @@ module.exports = {
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
   },
   bcrypt: {
-    rounds: parseInt(process.env.BCRYPT_ROUNDS) || 10,
+    rounds: Number.parseInt(process.env.BCRYPT_ROUNDS, 10) || 10,
   },
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) * 60 * 1000 || 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX) || 100, // limit each IP to 100 requests per windowMs
+    windowMs:
+      Number.parseInt(process.env.RATE_LIMIT_WINDOW, 10) * 60 * 1000 || 15 * 60 * 1000, // 15 minutes
+    max: Number.parseInt(process.env.RATE_LIMIT_MAX, 10) || 100, // limit each IP to 100 requests per windowMs
   },
   passwordReset: {
     tokenBytes: Number.parseInt(process.env.PASSWORD_RESET_TOKEN_BYTES, 10) || 32,

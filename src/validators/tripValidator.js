@@ -244,9 +244,27 @@ const updateTripValidator = [
     .customSanitizer(sanitizeNullableString),
 ];
 
+const exportTripValidator = [
+  query('format')
+    .optional({ checkFalsy: true, nullable: true })
+    .trim()
+    .toLowerCase()
+    .default('pdf')
+    .isIn(['pdf', 'csv'])
+    .withMessage('format must be pdf or csv'),
+  query('resource')
+    .optional({ checkFalsy: true, nullable: true })
+    .trim()
+    .toLowerCase()
+    .default('trip')
+    .isIn(['trip', 'budget'])
+    .withMessage('resource must be trip or budget'),
+];
+
 module.exports = {
   listTripsValidator,
   tripIdParamValidator,
   createTripValidator,
   updateTripValidator,
+  exportTripValidator,
 };

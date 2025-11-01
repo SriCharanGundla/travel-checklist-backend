@@ -1,0 +1,611 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Travel Checklist API",
+    "version": "1.0.0",
+    "description": "REST API for the Travel Checklist application providing authentication, trip management, collaboration, and budgeting capabilities.",
+    "contact": {
+      "name": "Travel Checklist Team",
+      "email": "support@travelchecklist.example"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Primary API"
+    }
+  ],
+  "tags": [
+    { "name": "System", "description": "Operational endpoints for observability." },
+    { "name": "Authentication", "description": "User sign-up, login, and session endpoints." },
+    { "name": "Trips", "description": "CRUD operations for trips." },
+    { "name": "Travelers", "description": "Manage travelers associated with a trip." },
+    { "name": "Expenses", "description": "Budget and expense tracking endpoints." },
+    { "name": "Documents", "description": "Travel document collection management." },
+    { "name": "Checklist", "description": "Packing and preparation checklist items." },
+    { "name": "Collaboration", "description": "Trip collaborators and share link endpoints." }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "StandardError": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "code": { "type": "string" },
+              "details": {
+                "type": ["object", "array", "null"]
+              }
+            },
+            "required": ["message", "code"]
+          }
+        },
+        "required": ["success", "error"]
+      },
+      "AuthTokens": {
+        "type": "object",
+        "properties": {
+          "accessToken": { "type": "string" },
+          "refreshToken": { "type": "string" },
+          "expiresIn": { "type": "integer", "description": "Number of seconds until accessToken expires." }
+        },
+        "required": ["accessToken", "refreshToken", "expiresIn"]
+      },
+      "Trip": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "ownerId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "destination": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "notes": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["planning", "in-progress", "completed", "archived"] },
+          "type": { "type": "string", "enum": ["leisure", "business", "family", "other"] },
+          "startDate": { "type": ["string", "null"], "format": "date" },
+          "endDate": { "type": ["string", "null"], "format": "date" },
+          "budgetCurrency": { "type": ["string", "null"], "example": "USD" },
+          "budgetAmount": { "type": "number", "format": "float" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "permission": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string" },
+              "level": { "type": "string" }
+            }
+          }
+        },
+        "required": ["id", "ownerId", "name", "status", "type", "createdAt", "updatedAt", "budgetAmount", "budgetCurrency", "permission"]
+      },
+      "TripInput": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 150 },
+          "destination": { "type": "string", "maxLength": 255 },
+          "description": { "type": "string" },
+          "notes": { "type": "string" },
+          "status": { "type": "string" },
+          "type": { "type": "string" },
+          "startDate": { "type": "string", "format": "date" },
+          "endDate": { "type": "string", "format": "date" },
+          "budgetCurrency": { "type": "string", "maxLength": 3 },
+          "budgetAmount": { "type": "number", "format": "float" }
+        },
+        "required": ["name"]
+      },
+      "Expense": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "tripId": { "type": "string", "format": "uuid" },
+          "category": { "type": "string" },
+          "amount": { "type": "number", "format": "float" },
+          "currency": { "type": "string", "maxLength": 3 },
+          "spentAt": { "type": ["string", "null"], "format": "date" },
+          "merchant": { "type": ["string", "null"] },
+          "notes": { "type": ["string", "null"] },
+          "createdBy": { "type": "string", "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "tripId", "category", "amount", "currency", "createdBy", "createdAt", "updatedAt"]
+      },
+      "ExpenseInput": {
+        "type": "object",
+        "properties": {
+          "category": { "type": "string" },
+          "amount": { "type": "number", "format": "float" },
+          "currency": { "type": "string", "maxLength": 3 },
+          "spentAt": { "type": "string", "format": "date" },
+          "merchant": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "required": ["category", "amount", "currency"]
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Service health probe",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Health status payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "timestamp": { "type": "string", "format": "date-time" },
+                    "environment": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register a new account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 },
+                  "firstName": { "type": "string" },
+                  "lastName": { "type": "string" }
+                },
+                "required": ["email", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/AuthTokens" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email already registered",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Authenticate using credentials",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 }
+                },
+                "required": ["email", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/AuthTokens" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Refresh an access token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": { "type": "string" }
+                },
+                "required": ["refreshToken"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New tokens issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/AuthTokens" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh token invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Invalidate refresh token",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "204": { "description": "Logout succeeded" },
+          "401": {
+            "description": "Unauthenticated request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips": {
+      "get": {
+        "tags": ["Trips"],
+        "summary": "List trips accessible to the user",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "in": "query", "name": "status", "schema": { "type": "string" }, "description": "Filter by trip status" },
+          { "in": "query", "name": "type", "schema": { "type": "string" }, "description": "Filter by trip type" },
+          { "in": "query", "name": "search", "schema": { "type": "string" }, "description": "Search by name or destination" }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of trips",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Trip" }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Trips"],
+        "summary": "Create a trip",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TripInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Trip created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/Trip" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{tripId}": {
+      "parameters": [
+        {
+          "name": "tripId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "format": "uuid" }
+        }
+      ],
+      "get": {
+        "tags": ["Trips"],
+        "summary": "Retrieve a trip",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Trip detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/Trip" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trip not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Trips"],
+        "summary": "Update a trip",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TripInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trip updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/Trip" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Trips"],
+        "summary": "Delete a trip",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "204": { "description": "Trip deleted" },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{tripId}/export": {
+      "parameters": [
+        {
+          "name": "tripId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "format": "uuid" }
+        }
+      ],
+      "get": {
+        "tags": ["Trips"],
+        "summary": "Export trip summary or budget data",
+        "description": "Downloads a CSV or PDF export for the selected trip resource.",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["trip", "budget"], "default": "trip" },
+            "description": "Choose which dataset to export."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["pdf", "csv"], "default": "pdf" },
+            "description": "File format for the export."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary file attachment",
+            "headers": {
+              "Content-Disposition": {
+                "schema": { "type": "string" },
+                "description": "Includes the suggested filename."
+              }
+            },
+            "content": {
+              "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+              "text/csv": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "404": {
+            "description": "Trip not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StandardError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trips/{tripId}/expenses": {
+      "parameters": [
+        {
+          "name": "tripId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "format": "uuid" }
+        }
+      ],
+      "get": {
+        "tags": ["Expenses"],
+        "summary": "List expenses for a trip",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Expense list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Expense" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Expenses"],
+        "summary": "Create an expense",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpenseInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Expense created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/Expense" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

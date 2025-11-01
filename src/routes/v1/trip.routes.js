@@ -7,6 +7,7 @@ const {
   tripIdParamValidator,
   createTripValidator,
   updateTripValidator,
+  exportTripValidator,
 } = require('../../validators/tripValidator');
 
 const router = express.Router();
@@ -21,6 +22,12 @@ router.put(
   [...tripIdParamValidator, ...updateTripValidator],
   validateRequest,
   TripController.update
+);
+router.get(
+  '/:tripId/export',
+  [...tripIdParamValidator, ...exportTripValidator],
+  validateRequest,
+  TripController.exportData
 );
 router.delete('/:tripId', tripIdParamValidator, validateRequest, TripController.remove);
 
