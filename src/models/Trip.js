@@ -79,6 +79,16 @@ module.exports = (sequelize, DataTypes) => {
       as: 'owner',
       foreignKey: 'ownerId',
     });
+
+    Trip.hasMany(models.Traveler, {
+      as: 'travelers',
+      foreignKey: 'tripId',
+    });
+
+    Trip.hasMany(models.ChecklistCategory, {
+      as: 'checklistCategories',
+      foreignKey: 'tripId',
+    });
   };
 
   return Trip;

@@ -2,6 +2,9 @@ const request = require('supertest');
 const app = require('../../src/app');
 const { RefreshToken } = require('../../src/models');
 
+let server;
+let api;
+
 const buildUserPayload = (overrides = {}) => ({
   email: 'Traveler@example.com',
   password: 'Sup3r$ecure!',
@@ -12,8 +15,23 @@ const buildUserPayload = (overrides = {}) => ({
 });
 
 describe('Auth API', () => {
+  beforeAll(async () => {
+    server = await new Promise((resolve, reject) => {
+      const listener = app
+        .listen(0, '127.0.0.1', () => resolve(listener))
+        .on('error', (error) => reject(error));
+    });
+    api = request.agent(server);
+  });
+
+  afterAll(async () => {
+    if (server) {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   it('registers a new user and normalizes profile fields', async () => {
-    const response = await request(app).post('/api/v1/auth/register').send(buildUserPayload());
+    const response = await api.post('/api/v1/auth/register').send(buildUserPayload());
 
     expect(response.status).toBe(201);
     expect(response.body.data.user).toMatchObject({
@@ -32,7 +50,7 @@ describe('Auth API', () => {
   });
 
   it('rejects weak passwords with a validation error', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/api/v1/auth/register')
       .send(buildUserPayload({ password: 'password' }));
 
@@ -47,9 +65,9 @@ describe('Auth API', () => {
 
   it('logs in an existing user and enforces credential checks', async () => {
     const credentials = buildUserPayload();
-    await request(app).post('/api/v1/auth/register').send(credentials).expect(201);
+    await api.post('/api/v1/auth/register').send(credentials).expect(201);
 
-    const loginResponse = await request(app)
+    const loginResponse = await api
       .post('/api/v1/auth/login')
       .send({ email: credentials.email.toUpperCase(), password: credentials.password })
       .expect(200);
@@ -57,17 +75,17 @@ describe('Auth API', () => {
     expect(loginResponse.body.data.user.email).toBe('traveler@example.com');
     expect(loginResponse.body.data.tokens.accessToken).toEqual(expect.any(String));
 
-    await request(app)
+    await api
       .post('/api/v1/auth/login')
       .send({ email: credentials.email, password: 'WrongPass1!' })
       .expect(401);
   });
 
   it('rotates refresh tokens and revokes the previous token', async () => {
-    const { body } = await request(app).post('/api/v1/auth/register').send(buildUserPayload());
+    const { body } = await api.post('/api/v1/auth/register').send(buildUserPayload());
     const originalRefreshToken = body.data.tokens.refreshToken;
 
-    const refreshResponse = await request(app)
+    const refreshResponse = await api
       .post('/api/v1/auth/refresh')
       .send({ refreshToken: originalRefreshToken })
       .expect(200);

@@ -1,7 +1,11 @@
 const { Op } = require('sequelize');
-const { Trip } = require('../models');
+const { Trip, ChecklistCategory } = require('../models');
 const AppError = require('../utils/AppError');
-const { TRIP_STATUS, TRIP_TYPES } = require('../config/constants');
+const {
+  TRIP_STATUS,
+  TRIP_TYPES,
+  DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS,
+} = require('../config/constants');
 
 const toNullableString = (value) => {
   if (value === undefined || value === null) {
@@ -114,24 +118,45 @@ const listTrips = async (ownerId, filters = {}) => {
   return trips.map((trip) => trip.get({ plain: true }));
 };
 
+const buildDefaultCategories = (tripId) =>
+  DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS.map((category) => ({
+    tripId,
+    slug: category.slug,
+    name: category.name,
+    description: category.description,
+    sortOrder: category.sortOrder,
+  }));
+
 const createTrip = async (ownerId, payload) => {
   const startDate = toNullableString(payload.startDate);
   const endDate = toNullableString(payload.endDate);
 
   validateDateRange(startDate, endDate);
 
-  const trip = await Trip.create({
-    ownerId,
-    name: typeof payload.name === 'string' ? payload.name.trim() : payload.name,
-    destination: toNullableString(payload.destination),
-    startDate,
-    endDate,
-    status: resolveStatus(payload.status),
-    type: resolveType(payload.type),
-    budgetCurrency: toCurrency(payload.budgetCurrency),
-    budgetAmount: toBudgetAmount(payload.budgetAmount),
-    description: toNullableString(payload.description),
-    notes: toNullableString(payload.notes),
+  const trip = await Trip.sequelize.transaction(async (transaction) => {
+    const createdTrip = await Trip.create(
+      {
+        ownerId,
+        name: typeof payload.name === 'string' ? payload.name.trim() : payload.name,
+        destination: toNullableString(payload.destination),
+        startDate,
+        endDate,
+        status: resolveStatus(payload.status),
+        type: resolveType(payload.type),
+        budgetCurrency: toCurrency(payload.budgetCurrency),
+        budgetAmount: toBudgetAmount(payload.budgetAmount),
+        description: toNullableString(payload.description),
+        notes: toNullableString(payload.notes),
+      },
+      { transaction }
+    );
+
+    const categories = buildDefaultCategories(createdTrip.id);
+    if (categories.length > 0) {
+      await ChecklistCategory.bulkCreate(categories, { transaction });
+    }
+
+    return createdTrip;
   });
 
   return trip.get({ plain: true });

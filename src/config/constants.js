@@ -82,4 +82,43 @@ module.exports = {
     BOOKINGS: 'bookings',
     COMMUNICATION: 'communication',
   },
+
+  DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS: [
+    {
+      slug: 'documents',
+      name: 'Travel Documents',
+      description: 'Passports, visas, IDs, and essential paperwork.',
+      sortOrder: 0,
+    },
+    {
+      slug: 'packing',
+      name: 'Packing Essentials',
+      description: 'Clothing, gear, and items to pack before departure.',
+      sortOrder: 1,
+    },
+    {
+      slug: 'tasks',
+      name: 'Pre-Trip Tasks',
+      description: 'Reservations, bookings, and must-do tasks.',
+      sortOrder: 2,
+    },
+    {
+      slug: 'health',
+      name: 'Health & Safety',
+      description: 'Vaccinations, medications, and travel insurance.',
+      sortOrder: 3,
+    },
+    {
+      slug: 'financial',
+      name: 'Financial Prep',
+      description: 'Budgeting, currency, and payment preparations.',
+      sortOrder: 4,
+    },
+    {
+      slug: 'connectivity',
+      name: 'Connectivity & Access',
+      description: 'Roaming, SIM cards, and digital access essentials.',
+      sortOrder: 5,
+    },
+  ],
 };
