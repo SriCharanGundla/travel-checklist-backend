@@ -5,6 +5,8 @@ const {
   loginValidator,
   refreshValidator,
   logoutValidator,
+  requestPasswordResetValidator,
+  resetPasswordValidator,
 } = require('../../validators/authValidator');
 const validateRequest = require('../../middleware/validateRequest');
 const authenticate = require('../../middleware/authMiddleware');
@@ -17,5 +19,19 @@ router.post('/login', authLimiter, loginValidator, validateRequest, AuthControll
 router.post('/refresh', authLimiter, refreshValidator, validateRequest, AuthController.refresh);
 router.post('/logout', authenticate, logoutValidator, validateRequest, AuthController.logout);
 router.get('/me', authenticate, AuthController.me);
+router.post(
+  '/password/forgot',
+  authLimiter,
+  requestPasswordResetValidator,
+  validateRequest,
+  AuthController.requestPasswordReset
+);
+router.post(
+  '/password/reset',
+  authLimiter,
+  resetPasswordValidator,
+  validateRequest,
+  AuthController.resetPassword
+);
 
 module.exports = router;

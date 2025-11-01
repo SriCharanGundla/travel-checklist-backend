@@ -4,19 +4,24 @@ const config = require('../config/database');
 const env = process.env.NODE_ENV || 'development';
 const dbConfig = config[env];
 
-const sequelize = new Sequelize(
-  dbConfig.database,
-  dbConfig.username,
-  dbConfig.password,
-  {
+let sequelize;
+
+if (dbConfig.dialect === 'sqlite') {
+  sequelize = new Sequelize({
+    dialect: 'sqlite',
+    storage: dbConfig.storage || ':memory:',
+    logging: dbConfig.logging,
+  });
+} else {
+  sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
     host: dbConfig.host,
     port: dbConfig.port,
     dialect: dbConfig.dialect,
     logging: dbConfig.logging,
     pool: dbConfig.pool,
-    dialectOptions: dbConfig.dialectOptions || {}
-  }
-);
+    dialectOptions: dbConfig.dialectOptions || {},
+  });
+}
 
 const db = {
   sequelize,
@@ -26,6 +31,7 @@ const db = {
 db.User = require('./User')(sequelize, DataTypes);
 db.RefreshToken = require('./RefreshToken')(sequelize, DataTypes);
 db.Trip = require('./Trip')(sequelize, DataTypes);
+db.PasswordResetToken = require('./PasswordResetToken')(sequelize, DataTypes);
 
 Object.keys(db)
   .filter((modelName) => modelName[0] === modelName[0].toUpperCase())

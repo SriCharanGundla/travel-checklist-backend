@@ -4,6 +4,8 @@ const { bcrypt: bcryptConfig } = require('../config/auth');
 const AppError = require('../utils/AppError');
 const userService = require('./userService');
 const tokenService = require('./tokenService');
+const passwordResetService = require('./passwordResetService');
+const emailService = require('./emailService');
 
 const buildUserResponse = (user) => {
   const safeUser = user.toSafeJSON ? user.toSafeJSON() : user.get({ plain: true });
@@ -20,8 +22,22 @@ const buildUserResponse = (user) => {
   };
 };
 
+const normalizeOptionalString = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+};
+
 const register = async (payload, context) => {
-  const existingUser = await userService.findUserByEmail(payload.email);
+  const email = payload.email.toLowerCase();
+  const existingUser = await userService.findUserByEmail(email);
 
   if (existingUser) {
     throw new AppError('Email already in use', 409, 'AUTH.EMAIL_IN_USE');
@@ -32,11 +48,11 @@ const register = async (payload, context) => {
   const user = await sequelize.transaction(async (transaction) => {
     const createdUser = await userService.createUser(
       {
-        email: payload.email.toLowerCase(),
+        email,
         passwordHash: hashedPassword,
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        timezone: payload.timezone,
+        firstName: normalizeOptionalString(payload.firstName),
+        lastName: normalizeOptionalString(payload.lastName),
+        timezone: normalizeOptionalString(payload.timezone),
       },
       { transaction }
     );
@@ -53,7 +69,8 @@ const register = async (payload, context) => {
 };
 
 const login = async (payload, context) => {
-  const user = await userService.findUserByEmail(payload.email);
+  const email = payload.email.toLowerCase();
+  const user = await userService.findUserByEmail(email);
 
   if (!user) {
     throw new AppError('Invalid credentials', 401, 'AUTH.INVALID_CREDENTIALS');
@@ -103,10 +120,58 @@ const getProfile = async (userId) => {
   return buildUserResponse(user);
 };
 
+const requestPasswordReset = async (email, context) => {
+  if (!email || typeof email !== 'string') {
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return;
+  }
+
+  const user = await userService.findUserByEmail(normalizedEmail);
+
+  if (!user) {
+    return;
+  }
+
+  const { token, expiresAt } = await passwordResetService.generateResetToken(user, context);
+
+  await emailService.sendPasswordResetEmail({
+    to: user.email,
+    firstName: user.firstName,
+    token,
+    expiresAt,
+  });
+};
+
+const resetPassword = async (token, newPassword) => {
+  if (!token) {
+    throw new AppError('Reset token is required', 400, 'AUTH.RESET_TOKEN_REQUIRED');
+  }
+
+  const tokenRecord = await passwordResetService.verifyToken(token);
+  const { user } = tokenRecord;
+
+  const hashedPassword = await bcrypt.hash(newPassword, bcryptConfig.rounds);
+  await userService.updatePassword(user.id, hashedPassword);
+
+  await passwordResetService.markTokenAsUsed(tokenRecord);
+  await tokenService.revokeUserTokens(user.id);
+
+  const updatedUser = await userService.findUserById(user.id);
+
+  return buildUserResponse(updatedUser);
+};
+
 module.exports = {
   register,
   login,
   refreshTokens,
   logout,
   getProfile,
+  requestPasswordReset,
+  resetPassword,
 };

@@ -73,6 +73,11 @@ module.exports = (sequelize, DataTypes) => {
       as: 'refreshTokens',
       foreignKey: 'userId',
     });
+
+    User.hasMany(models.PasswordResetToken, {
+      as: 'passwordResetTokens',
+      foreignKey: 'userId',
+    });
   };
 
   User.prototype.toSafeJSON = function toSafeJSON() {

@@ -16,6 +16,11 @@ module.exports = {
       idle: 10000
     }
   },
+  test: {
+    dialect: 'sqlite',
+    storage: process.env.DB_STORAGE || ':memory:',
+    logging: false
+  },
   production: {
     username: process.env.DB_USER,
     password: process.env.DB_PASSWORD,

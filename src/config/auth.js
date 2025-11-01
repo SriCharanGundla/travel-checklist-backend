@@ -14,4 +14,13 @@ module.exports = {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) * 60 * 1000 || 15 * 60 * 1000, // 15 minutes
     max: parseInt(process.env.RATE_LIMIT_MAX) || 100, // limit each IP to 100 requests per windowMs
   },
+  passwordReset: {
+    tokenBytes: Number.parseInt(process.env.PASSWORD_RESET_TOKEN_BYTES, 10) || 32,
+    expiresInMinutes: Number.parseInt(process.env.PASSWORD_RESET_EXPIRE_MINUTES, 10) || 60,
+    baseUrl:
+      process.env.PASSWORD_RESET_BASE_URL ||
+      process.env.FRONTEND_APP_URL ||
+      process.env.CLIENT_URL ||
+      'http://localhost:3000',
+  },
 };

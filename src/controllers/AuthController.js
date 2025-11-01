@@ -75,10 +75,34 @@ const me = catchAsync(async (req, res) => {
   });
 });
 
+const requestPasswordReset = catchAsync(async (req, res) => {
+  const { email } = req.body;
+
+  await authService.requestPasswordReset(email, buildContext(req));
+
+  return sendResponse(res, {
+    data: null,
+    message: 'If an account matches that email, password reset instructions have been sent.',
+  });
+});
+
+const resetPassword = catchAsync(async (req, res) => {
+  const { token, password } = req.body;
+
+  await authService.resetPassword(token, password);
+
+  return sendResponse(res, {
+    data: null,
+    message: 'Password updated successfully. You can now sign in with your new credentials.',
+  });
+});
+
 module.exports = {
   register,
   login,
   refresh,
   logout,
   me,
+  requestPasswordReset,
+  resetPassword,
 };

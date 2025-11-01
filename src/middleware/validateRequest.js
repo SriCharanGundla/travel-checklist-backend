@@ -8,11 +8,16 @@ module.exports = (req, res, next) => {
     return next();
   }
 
-  const formatted = errors.array().map((error) => ({
-    field: error.param,
-    message: error.msg,
-    value: error.value,
-  }));
+  const formatted = errors.array().map((error) => {
+    const field = error.param ?? error.path ?? null;
+
+    return {
+      field,
+      message: error.msg,
+      value: error.value,
+      location: error.location,
+    };
+  });
 
   return next(new AppError('Validation failed', 422, 'VALIDATION_ERROR', formatted));
 };

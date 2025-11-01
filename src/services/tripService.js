@@ -3,6 +3,51 @@ const { Trip } = require('../models');
 const AppError = require('../utils/AppError');
 const { TRIP_STATUS, TRIP_TYPES } = require('../config/constants');
 
+const toNullableString = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+};
+
+const resolveStatus = (status, fallback = TRIP_STATUS.PLANNING) =>
+  Object.values(TRIP_STATUS).includes(status) ? status : fallback;
+
+const resolveType = (type, fallback = TRIP_TYPES.LEISURE) =>
+  Object.values(TRIP_TYPES).includes(type) ? type : fallback;
+
+const toCurrency = (currency, fallback = 'USD') => {
+  const value = typeof currency === 'string' ? currency.trim().toUpperCase() : currency;
+  if (!value) {
+    return fallback;
+  }
+  return value;
+};
+
+const toBudgetAmount = (amount, fallback = 0) => {
+  if (amount === undefined || amount === null || amount === '') {
+    return fallback;
+  }
+
+  const numeric = typeof amount === 'number' ? amount : Number.parseFloat(amount);
+
+  if (Number.isNaN(numeric)) {
+    throw new AppError('Budget amount must be numeric', 400, 'TRIP.INVALID_BUDGET');
+  }
+
+  if (numeric < 0) {
+    throw new AppError('Budget amount must be zero or greater', 400, 'TRIP.INVALID_BUDGET');
+  }
+
+  return Math.round(numeric * 100) / 100;
+};
+
 const validateDateRange = (startDate, endDate) => {
   if (startDate && endDate) {
     const start = new Date(startDate);
@@ -13,7 +58,7 @@ const validateDateRange = (startDate, endDate) => {
     }
 
     if (start > end) {
-      throw new AppError('Start date must be before end date', 400, 'TRIP.INVALID_RANGE');
+      throw new AppError('Start date must be on or before end date', 400, 'TRIP.INVALID_RANGE');
     }
   }
 };
@@ -23,18 +68,30 @@ const listTrips = async (ownerId, filters = {}) => {
     ownerId,
   };
 
-  if (filters.status && Object.values(TRIP_STATUS).includes(filters.status)) {
-    where.status = filters.status;
+  const normalizedStatus =
+    typeof filters.status === 'string' ? filters.status.trim().toLowerCase() : undefined;
+  if (normalizedStatus && Object.values(TRIP_STATUS).includes(normalizedStatus)) {
+    where.status = normalizedStatus;
   }
 
-  if (filters.type && Object.values(TRIP_TYPES).includes(filters.type)) {
-    where.type = filters.type;
+  const normalizedType =
+    typeof filters.type === 'string' ? filters.type.trim().toLowerCase() : undefined;
+  if (normalizedType && Object.values(TRIP_TYPES).includes(normalizedType)) {
+    where.type = normalizedType;
   }
 
-  if (filters.search) {
+  const searchTerm = typeof filters.search === 'string' ? filters.search.trim() : null;
+  if (searchTerm) {
+    const likeOperator =
+      Trip.sequelize && typeof Trip.sequelize.getDialect === 'function'
+        ? Trip.sequelize.getDialect() === 'postgres'
+          ? Op.iLike
+          : Op.like
+        : Op.like;
+
     where[Op.or] = [
-      { name: { [Op.iLike]: `%${filters.search}%` } },
-      { destination: { [Op.iLike]: `%${filters.search}%` } },
+      { name: { [likeOperator]: `%${searchTerm}%` } },
+      { destination: { [likeOperator]: `%${searchTerm}%` } },
     ];
   }
 
@@ -58,20 +115,23 @@ const listTrips = async (ownerId, filters = {}) => {
 };
 
 const createTrip = async (ownerId, payload) => {
-  validateDateRange(payload.startDate, payload.endDate);
+  const startDate = toNullableString(payload.startDate);
+  const endDate = toNullableString(payload.endDate);
+
+  validateDateRange(startDate, endDate);
 
   const trip = await Trip.create({
     ownerId,
-    name: payload.name,
-    destination: payload.destination,
-    startDate: payload.startDate,
-    endDate: payload.endDate,
-    status: payload.status || TRIP_STATUS.PLANNING,
-    type: payload.type || TRIP_TYPES.LEISURE,
-    budgetCurrency: payload.budgetCurrency || 'USD',
-    budgetAmount: payload.budgetAmount || 0,
-    description: payload.description,
-    notes: payload.notes,
+    name: typeof payload.name === 'string' ? payload.name.trim() : payload.name,
+    destination: toNullableString(payload.destination),
+    startDate,
+    endDate,
+    status: resolveStatus(payload.status),
+    type: resolveType(payload.type),
+    budgetCurrency: toCurrency(payload.budgetCurrency),
+    budgetAmount: toBudgetAmount(payload.budgetAmount),
+    description: toNullableString(payload.description),
+    notes: toNullableString(payload.notes),
   });
 
   return trip.get({ plain: true });
@@ -93,7 +153,11 @@ const getTripById = async (ownerId, tripId) => {
 };
 
 const updateTrip = async (ownerId, tripId, updates) => {
-  validateDateRange(updates.startDate, updates.endDate);
+  const hasStartDate = Object.prototype.hasOwnProperty.call(updates, 'startDate');
+  const hasEndDate = Object.prototype.hasOwnProperty.call(updates, 'endDate');
+
+  const normalizedStartDate = hasStartDate ? toNullableString(updates.startDate) : undefined;
+  const normalizedEndDate = hasEndDate ? toNullableString(updates.endDate) : undefined;
 
   const trip = await Trip.findOne({
     where: {
@@ -106,24 +170,57 @@ const updateTrip = async (ownerId, tripId, updates) => {
     throw new AppError('Trip not found', 404, 'TRIP.NOT_FOUND');
   }
 
-  const updatableFields = [
-    'name',
-    'destination',
-    'startDate',
-    'endDate',
-    'status',
-    'type',
-    'budgetCurrency',
-    'budgetAmount',
-    'description',
-    'notes',
-  ];
+  validateDateRange(
+    normalizedStartDate !== undefined ? normalizedStartDate : trip.startDate,
+    normalizedEndDate !== undefined ? normalizedEndDate : trip.endDate
+  );
 
-  updatableFields.forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(updates, field)) {
-      trip.set(field, updates[field]);
-    }
-  });
+  if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
+    trip.set(
+      'name',
+      updates.name === undefined || updates.name === null
+        ? trip.name
+        : typeof updates.name === 'string'
+        ? updates.name.trim()
+        : updates.name
+    );
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'destination')) {
+    trip.set('destination', toNullableString(updates.destination));
+  }
+
+  if (hasStartDate) {
+    trip.set('startDate', normalizedStartDate);
+  }
+
+  if (hasEndDate) {
+    trip.set('endDate', normalizedEndDate);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
+    trip.set('status', resolveStatus(updates.status, trip.status));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'type')) {
+    trip.set('type', resolveType(updates.type, trip.type));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'budgetCurrency')) {
+    trip.set('budgetCurrency', toCurrency(updates.budgetCurrency, trip.budgetCurrency));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'budgetAmount')) {
+    trip.set('budgetAmount', toBudgetAmount(updates.budgetAmount, trip.budgetAmount));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'description')) {
+    trip.set('description', toNullableString(updates.description));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'notes')) {
+    trip.set('notes', toNullableString(updates.notes));
+  }
 
   await trip.save();
 

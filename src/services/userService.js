@@ -22,9 +22,21 @@ const updateLastLogin = async (userId) => {
   );
 };
 
+const updatePassword = async (userId, passwordHash) => {
+  await User.update(
+    { passwordHash },
+    {
+      where: { id: userId },
+      silent: true,
+      individualHooks: false,
+    }
+  );
+};
+
 module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
   updateLastLogin,
+  updatePassword,
 };
