@@ -1,0 +1,38 @@
+const { Sequelize, DataTypes } = require('sequelize');
+const config = require('../config/database');
+
+const env = process.env.NODE_ENV || 'development';
+const dbConfig = config[env];
+
+const sequelize = new Sequelize(
+  dbConfig.database,
+  dbConfig.username,
+  dbConfig.password,
+  {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    dialect: dbConfig.dialect,
+    logging: dbConfig.logging,
+    pool: dbConfig.pool,
+    dialectOptions: dbConfig.dialectOptions || {}
+  }
+);
+
+const db = {
+  sequelize,
+  Sequelize,
+};
+
+db.User = require('./User')(sequelize, DataTypes);
+db.RefreshToken = require('./RefreshToken')(sequelize, DataTypes);
+db.Trip = require('./Trip')(sequelize, DataTypes);
+
+Object.keys(db)
+  .filter((modelName) => modelName[0] === modelName[0].toUpperCase())
+  .forEach((modelName) => {
+    if (typeof db[modelName].associate === 'function') {
+      db[modelName].associate(db);
+    }
+  });
+
+module.exports = db;
