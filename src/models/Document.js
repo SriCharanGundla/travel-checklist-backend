@@ -1,4 +1,5 @@
 const { DOCUMENT_TYPES, DOCUMENT_STATUS } = require('../config/constants');
+const { encryptField, decryptField } = require('../utils/encryption');
 
 module.exports = (sequelize, DataTypes) => {
   const Document = sequelize.define(
@@ -20,8 +21,18 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: DOCUMENT_TYPES.PASSPORT,
       },
       identifier: {
-        type: DataTypes.STRING(100),
+        type: DataTypes.TEXT,
         allowNull: true,
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('identifier', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('identifier'));
+        },
       },
       issuingCountry: {
         type: DataTypes.STRING(2),
@@ -44,13 +55,33 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: DOCUMENT_STATUS.PENDING,
       },
       fileUrl: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true,
         field: 'file_url',
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('fileUrl', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('fileUrl'));
+        },
       },
       notes: {
         type: DataTypes.TEXT,
         allowNull: true,
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('notes', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('notes'));
+        },
       },
     },
     {
@@ -76,4 +107,3 @@ module.exports = (sequelize, DataTypes) => {
 
   return Document;
 };
-

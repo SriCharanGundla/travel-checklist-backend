@@ -8,9 +8,17 @@ const {
   documentIdParamValidator,
   createDocumentValidator,
   updateDocumentValidator,
+  vaultDownloadQueryValidator,
 } = require('../../validators/documentValidator');
 
 const router = express.Router();
+
+router.get(
+  '/documents/:documentId/vault-download',
+  [...documentIdParamValidator, ...vaultDownloadQueryValidator],
+  validateRequest,
+  DocumentController.vaultDownload
+);
 
 router.use(authenticate);
 
@@ -35,6 +43,13 @@ router.patch(
   DocumentController.update
 );
 
+router.post(
+  '/documents/:documentId/vault-link',
+  [...documentIdParamValidator],
+  validateRequest,
+  DocumentController.issueVaultLink
+);
+
 router.delete(
   '/documents/:documentId',
   [...documentIdParamValidator],
@@ -43,4 +58,3 @@ router.delete(
 );
 
 module.exports = router;
-

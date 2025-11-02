@@ -45,10 +45,39 @@ const remove = catchAsync(async (req, res) => {
   return res.status(204).send();
 });
 
+const issueVaultLink = catchAsync(async (req, res) => {
+  const { downloadUrl, expiresAt, fileName } = await documentService.generateVaultLink(
+    req.auth.userId,
+    req.params.documentId,
+    req
+  );
+
+  return sendResponse(res, {
+    data: {
+      downloadUrl,
+      expiresAt,
+      fileName,
+    },
+    message: 'Secure download link generated',
+  });
+});
+
+const vaultDownload = catchAsync(async (req, res) => {
+  const result = await documentService.resolveVaultDownload({
+    documentId: req.params.documentId,
+    token: req.query.token,
+    signature: req.query.signature,
+  });
+
+  res.set('Cache-Control', 'no-store');
+  return res.redirect(302, result.vaultReference);
+});
+
 module.exports = {
   listByTrip,
   create,
   update,
   remove,
+  issueVaultLink,
+  vaultDownload,
 };
-

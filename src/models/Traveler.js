@@ -1,3 +1,5 @@
+const { encryptField, decryptField } = require('../utils/encryption');
+
 module.exports = (sequelize, DataTypes) => {
   const Traveler = sequelize.define(
     'Traveler',
@@ -23,21 +25,51 @@ module.exports = (sequelize, DataTypes) => {
         field: 'preferred_name',
       },
       email: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true,
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('email', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('email'));
+        },
       },
       phone: {
-        type: DataTypes.STRING(30),
+        type: DataTypes.TEXT,
         allowNull: true,
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('phone', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('phone'));
+        },
       },
       birthdate: {
         type: DataTypes.DATEONLY,
         allowNull: true,
       },
       passportNumber: {
-        type: DataTypes.STRING(50),
+        type: DataTypes.TEXT,
         allowNull: true,
         field: 'passport_number',
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('passportNumber', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('passportNumber'));
+        },
       },
       passportCountry: {
         type: DataTypes.STRING(2),
@@ -50,18 +82,48 @@ module.exports = (sequelize, DataTypes) => {
         field: 'passport_expiry',
       },
       emergencyContactName: {
-        type: DataTypes.STRING(150),
+        type: DataTypes.TEXT,
         allowNull: true,
         field: 'emergency_contact_name',
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('emergencyContactName', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('emergencyContactName'));
+        },
       },
       emergencyContactPhone: {
-        type: DataTypes.STRING(30),
+        type: DataTypes.TEXT,
         allowNull: true,
         field: 'emergency_contact_phone',
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('emergencyContactPhone', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('emergencyContactPhone'));
+        },
       },
       notes: {
         type: DataTypes.TEXT,
         allowNull: true,
+        set(value) {
+          const encrypted = encryptField(value);
+          if (encrypted === undefined) {
+            return;
+          }
+          this.setDataValue('notes', encrypted);
+        },
+        get() {
+          return decryptField(this.getDataValue('notes'));
+        },
       },
     },
     {
@@ -97,4 +159,3 @@ module.exports = (sequelize, DataTypes) => {
 
   return Traveler;
 };
-

@@ -82,7 +82,17 @@ const login = async (payload, context) => {
     throw new AppError('Invalid credentials', 401, 'AUTH.INVALID_CREDENTIALS');
   }
 
-  await userService.updateLastLogin(user.id);
+  const loginTimezone = normalizeOptionalString(payload.timezone);
+
+  const lastLoginAt = await userService.updateLastLogin(user.id, {
+    timezone: loginTimezone,
+  });
+
+  user.setDataValue('lastLoginAt', lastLoginAt);
+
+  if (loginTimezone) {
+    user.setDataValue('timezone', loginTimezone);
+  }
 
   const tokens = await tokenService.generateAuthTokens(user, context);
 

@@ -1,7 +1,8 @@
-const { body, param } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const { DOCUMENT_TYPES, DOCUMENT_STATUS } = require('../config/constants');
 const { tripIdParamValidator } = require('./tripValidator');
 const { travelerIdParamValidator } = require('./travelerValidator');
+const documentVaultService = require('../services/documentVaultService');
 
 const sanitizeNullableString = (value) => {
   if (value === undefined || value === null) {
@@ -61,8 +62,11 @@ const createDocumentValidator = [
     .withMessage('Invalid document status'),
   body('fileUrl')
     .optional({ checkFalsy: true, nullable: true })
-    .isURL()
-    .withMessage('fileUrl must be a valid URL'),
+    .custom((value) => {
+      documentVaultService.normalizeVaultReference(value);
+      return true;
+    })
+    .customSanitizer((value) => documentVaultService.normalizeVaultReference(value)),
   body('notes')
     .optional({ checkFalsy: true, nullable: true })
     .isString()
@@ -72,11 +76,19 @@ const createDocumentValidator = [
 
 const updateDocumentValidator = createDocumentValidator;
 
+const vaultDownloadQueryValidator = [
+  query('token').trim().notEmpty().withMessage('token is required'),
+  query('signature')
+    .trim()
+    .matches(/^[A-Za-z0-9_-]+$/)
+    .withMessage('signature is required'),
+];
+
 module.exports = {
   tripIdParamValidator,
   travelerIdParamValidator,
   documentIdParamValidator,
   createDocumentValidator,
   updateDocumentValidator,
+  vaultDownloadQueryValidator,
 };
-

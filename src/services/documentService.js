@@ -2,6 +2,7 @@ const { Traveler, Document, Trip } = require('../models');
 const AppError = require('../utils/AppError');
 const { DOCUMENT_TYPES, DOCUMENT_STATUS, PERMISSION_LEVELS } = require('../config/constants');
 const { ensureTripAccess } = require('./authorizationService');
+const documentVaultService = require('./documentVaultService');
 
 const toNullableString = (value) => {
   if (value === undefined || value === null) {
@@ -103,6 +104,20 @@ const ensureDocumentForUser = async (userId, documentId, requiredPermission) => 
   return document;
 };
 
+const toSafeDocument = (documentInstance) => {
+  const plain = documentInstance.get({ plain: true });
+  const metadata = documentVaultService.extractMetadata(plain.fileUrl);
+
+  return {
+    ...plain,
+    fileUrl: undefined,
+    hasVaultFile: metadata.hasFile,
+    vaultFileName: metadata.fileName,
+    vaultHost: metadata.host,
+    vaultPathname: metadata.pathname,
+  };
+};
+
 const listDocumentsByTrip = async (userId, tripId) => {
   await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.VIEW);
 
@@ -128,11 +143,13 @@ const listDocumentsByTrip = async (userId, tripId) => {
     ],
   });
 
-  return documents.map((document) => document.get({ plain: true }));
+  return documents.map((document) => toSafeDocument(document));
 };
 
 const createDocument = async (userId, travelerId, payload) => {
   const traveler = await ensureTravelerForUser(userId, travelerId, PERMISSION_LEVELS.EDIT);
+
+  const vaultReference = documentVaultService.normalizeVaultReference(payload.fileUrl);
 
   const document = await Document.create({
     travelerId: traveler.id,
@@ -142,11 +159,11 @@ const createDocument = async (userId, travelerId, payload) => {
     issuedDate: normalizeDate(payload.issuedDate, 'issuedDate'),
     expiryDate: normalizeDate(payload.expiryDate, 'expiryDate'),
     status: resolveDocumentStatus(payload.status),
-    fileUrl: toNullableString(payload.fileUrl),
+    fileUrl: vaultReference === undefined ? null : vaultReference,
     notes: toNullableString(payload.notes),
   });
 
-  return document.get({ plain: true });
+  return toSafeDocument(document);
 };
 
 const updateDocument = async (userId, documentId, updates) => {
@@ -177,7 +194,13 @@ const updateDocument = async (userId, documentId, updates) => {
         document.set('status', resolveDocumentStatus(value, document.status));
       }
     },
-    fileUrl: (value) => document.set('fileUrl', toNullableString(value)),
+    fileUrl: (value) => {
+      const normalized = documentVaultService.normalizeVaultReference(value);
+      if (normalized === undefined) {
+        return;
+      }
+      document.set('fileUrl', normalized);
+    },
     notes: (value) => document.set('notes', toNullableString(value)),
   };
 
@@ -188,7 +211,8 @@ const updateDocument = async (userId, documentId, updates) => {
   });
 
   await document.save();
-  return document.get({ plain: true });
+  await document.reload();
+  return toSafeDocument(document);
 };
 
 const deleteDocument = async (userId, documentId) => {
@@ -196,9 +220,53 @@ const deleteDocument = async (userId, documentId) => {
   await document.destroy();
 };
 
+const generateVaultLink = async (userId, documentId, request) => {
+  const document = await ensureDocumentForUser(userId, documentId, PERMISSION_LEVELS.VIEW);
+  const vaultReference = document.get('fileUrl');
+
+  const grant = documentVaultService.generateAccessGrant({
+    documentId: document.id,
+    userId,
+    vaultReference,
+  });
+
+  const downloadUrl = documentVaultService.buildDownloadPath(
+    document.id,
+    grant.token,
+    grant.signature,
+    request
+  );
+
+  const metadata = documentVaultService.extractMetadata(vaultReference);
+
+  return {
+    downloadUrl,
+    expiresAt: grant.expiresAt,
+    fileName: metadata.fileName,
+  };
+};
+
+const resolveVaultDownload = async ({ documentId, token, signature }) => {
+  const payload = documentVaultService.verifyAccessGrant({ documentId, token, signature });
+  const document = await ensureDocumentForUser(payload.usr, documentId, PERMISSION_LEVELS.VIEW);
+  const vaultReference = document.get('fileUrl');
+
+  if (!vaultReference) {
+    throw new AppError('Secure file is no longer available for this document', 404, 'VAULT.MISSING_REFERENCE');
+  }
+
+  return {
+    vaultReference,
+    userId: payload.usr,
+    metadata: documentVaultService.extractMetadata(vaultReference),
+  };
+};
+
 module.exports = {
   listDocumentsByTrip,
   createDocument,
   updateDocument,
   deleteDocument,
+  generateVaultLink,
+  resolveVaultDownload,
 };

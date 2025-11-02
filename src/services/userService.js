@@ -12,14 +12,21 @@ const findUserByEmail = (email) =>
 
 const findUserById = (id) => User.findByPk(id);
 
-const updateLastLogin = async (userId) => {
-  await User.update(
-    { lastLoginAt: new Date() },
-    {
-      where: { id: userId },
-      silent: true,
-    }
-  );
+const updateLastLogin = async (userId, { timezone, lastLoginAt } = {}) => {
+  const updates = {
+    lastLoginAt: lastLoginAt instanceof Date ? lastLoginAt : new Date(),
+  };
+
+  if (timezone) {
+    updates.timezone = timezone;
+  }
+
+  await User.update(updates, {
+    where: { id: userId },
+    silent: true,
+  });
+
+  return updates.lastLoginAt;
 };
 
 const updatePassword = async (userId, passwordHash) => {

@@ -63,6 +63,13 @@ const loginValidator = [
     .withMessage('Password is required')
     .isLength({ min: 8, max: 64 })
     .withMessage('Password must be between 8 and 64 characters long'),
+  body('timezone')
+    .optional({ checkFalsy: true, nullable: true })
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Timezone must be 100 characters or fewer')
+    .bail()
+    .custom(validateTimezone),
 ];
 
 const refreshValidator = [
