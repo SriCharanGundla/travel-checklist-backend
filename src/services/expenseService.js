@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Expense } = require('../models');
+const { Expense, Trip } = require('../models');
 const AppError = require('../utils/AppError');
 const { EXPENSE_CATEGORIES, PERMISSION_LEVELS } = require('../config/constants');
 const { ensureTripAccess } = require('./authorizationService');
@@ -32,12 +32,18 @@ const normalizeAmount = (value) => {
   return Math.round(numeric * 100) / 100;
 };
 
-const normalizeCurrency = (value) => {
-  if (!value) {
-    return 'USD';
+const normalizeCurrency = (value, fallback = 'USD') => {
+  const candidate = (value || fallback || 'USD').toString().trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(candidate)) {
+    return candidate;
   }
 
-  return String(value).trim().toUpperCase().slice(0, 3);
+  const fallbackCandidate = (fallback || 'USD').toString().trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(fallbackCandidate)) {
+    return fallbackCandidate;
+  }
+
+  throw new AppError('Invalid currency code', 400, 'EXPENSE.INVALID_CURRENCY');
 };
 
 const normalizeDate = (value, fieldName) => {
@@ -88,11 +94,13 @@ const listExpenses = async (userId, tripId, filters = {}) => {
 const createExpense = async (userId, tripId, payload) => {
   await ensureTripAccess(userId, tripId, { requiredPermission: PERMISSION_LEVELS.EDIT });
 
+  const tripCurrency = await resolveTripCurrency(tripId);
+
   const expense = await Expense.create({
     tripId,
     category: normalizeCategory(payload.category || EXPENSE_CATEGORIES.OTHER),
     amount: normalizeAmount(payload.amount),
-    currency: normalizeCurrency(payload.currency),
+    currency: normalizeCurrency(payload.currency, tripCurrency),
     spentAt: normalizeDate(payload.spentAt, 'spentAt'),
     merchant:
       typeof payload.merchant === 'string' && payload.merchant.trim()
@@ -129,7 +137,8 @@ const updateExpense = async (userId, tripId, expenseId, updates) => {
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'currency')) {
-    expense.set('currency', normalizeCurrency(updates.currency));
+    const tripCurrency = await resolveTripCurrency(tripId);
+    expense.set('currency', normalizeCurrency(tripCurrency, tripCurrency));
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'spentAt')) {
@@ -179,4 +188,11 @@ module.exports = {
   createExpense,
   updateExpense,
   deleteExpense,
+};
+const resolveTripCurrency = async (tripId) => {
+  const trip = await Trip.findByPk(tripId, {
+    attributes: ['budgetCurrency'],
+  });
+
+  return trip?.budgetCurrency || 'USD';
 };

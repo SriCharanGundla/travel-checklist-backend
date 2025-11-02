@@ -1,9 +1,12 @@
 const { Op, fn, col } = require('sequelize');
-const { Trip } = require('../models');
+const { Trip, ChecklistItem, ChecklistCategory } = require('../models');
 const { TRIP_STATUS } = require('../config/constants');
 
 const statuses = Object.values(TRIP_STATUS);
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const DUE_SOON_WINDOW_DAYS = 7;
+
+const addDays = (date, days) => new Date(date.getTime() + days * MS_PER_DAY);
 
 const normalizeDateOnly = (date) => {
   if (!date) {
@@ -43,7 +46,17 @@ const getOverview = async (ownerId) => {
   const today = new Date();
   const todayDateOnly = normalizeDateOnly(today);
 
-  const [totalTrips, upcomingTripCount, activeTripCount, statusRows, activeTrip, upcomingTrip] =
+  const dueSoonEnd = normalizeDateOnly(addDays(today, DUE_SOON_WINDOW_DAYS));
+
+  const [
+    totalTrips,
+    upcomingTripCount,
+    activeTripCount,
+    statusRows,
+    activeTrip,
+    upcomingTrip,
+    dueSoonTasks,
+  ] =
     await Promise.all([
       Trip.count({ where: { ownerId } }),
       Trip.count({
@@ -116,6 +129,36 @@ const getOverview = async (ownerId) => {
           ['createdAt', 'ASC'],
         ],
       }),
+      ChecklistItem.unscoped().count({
+        where: {
+          completedAt: {
+            [Op.is]: null,
+          },
+          dueDate: {
+            [Op.and]: [
+              { [Op.gte]: todayDateOnly },
+              { [Op.lte]: dueSoonEnd },
+            ],
+          },
+        },
+        include: [
+          {
+            model: ChecklistCategory,
+            as: 'category',
+            required: true,
+            attributes: [],
+            include: [
+              {
+                model: Trip,
+                as: 'trip',
+                attributes: [],
+                where: { ownerId },
+                required: true,
+              },
+            ],
+          },
+        ],
+      }),
     ]);
 
   const nextTripRecord = activeTrip || upcomingTrip;
@@ -142,9 +185,12 @@ const getOverview = async (ownerId) => {
     nextTrip,
     statusBreakdown,
     tasks: {
-      dueSoonCount: 0,
-      placeholder: true,
-      message: 'Task due soon metrics will ship with the dedicated tasks module in Phase 2.',
+      dueSoonCount: dueSoonTasks,
+      placeholder: false,
+      message:
+        dueSoonTasks > 0
+          ? 'Tasks due within the next 7 days.'
+          : 'No checklist items are due in the next 7 days.',
     },
     generatedAt: new Date().toISOString(),
   };
