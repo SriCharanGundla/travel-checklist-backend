@@ -35,13 +35,12 @@ module.exports = {
       acquire: 30000,
       idle: 10000
     },
-    // Enable SSL for production databases (e.g., AWS RDS, Heroku)
-    // Remove dialectOptions if not using SSL
+    // Enable SSL for production databases (e.g., Neon, AWS RDS, Heroku)
     dialectOptions: process.env.DB_SSL === 'true' ? {
       ssl: {
         require: true,
-        rejectUnauthorized: true,
-        ca: process.env.DB_SSL_CA // Path to CA certificate if needed
+        rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
+        ca: process.env.DB_SSL_CA || undefined
       }
     } : {}
   }
