@@ -17,6 +17,8 @@ RUN npm ci --only=production && \
 # Copy application code
 COPY --chown=nodejs:nodejs . .
 
+RUN chmod +x docker-entrypoint.sh
+
 # Switch to non-root user
 USER nodejs
 
@@ -26,6 +28,8 @@ EXPOSE 5000
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
   CMD node -e "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
 
 # Start application
 CMD ["npm", "start"]
