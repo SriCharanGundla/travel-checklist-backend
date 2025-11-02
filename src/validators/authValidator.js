@@ -1,6 +1,6 @@
 const { body } = require('express-validator');
 
-const passwordComplexityRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,64}$/;
+const passwordComplexityRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,64}$/;
 
 const validateTimezone = (value) => {
   try {
@@ -28,7 +28,7 @@ const registerValidator = [
     .isLength({ min: 8, max: 64 })
     .withMessage('Password must be between 8 and 64 characters long')
     .matches(passwordComplexityRegex)
-    .withMessage('Password must include upper & lower case letters, a number, and a symbol'),
+    .withMessage('Password must include upper & lower case letters and a number'),
   body('firstName')
     .optional({ checkFalsy: true, nullable: true })
     .trim()
@@ -111,7 +111,7 @@ const resetPasswordValidator = [
     .isLength({ min: 8, max: 64 })
     .withMessage('Password must be between 8 and 64 characters long')
     .matches(passwordComplexityRegex)
-    .withMessage('Password must include upper & lower case letters, a number, and a symbol'),
+    .withMessage('Password must include upper & lower case letters and a number'),
 ];
 
 module.exports = {
