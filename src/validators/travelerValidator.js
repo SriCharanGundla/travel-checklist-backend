@@ -18,6 +18,10 @@ const travelerIdParamValidator = [
   param('travelerId').trim().isUUID().withMessage('Traveler id must be a valid UUID'),
 ];
 
+const contactIdParamValidator = [
+  param('contactId').trim().isUUID().withMessage('Traveler contact id must be a valid UUID'),
+];
+
 const createTravelerValidator = [
   body('fullName')
     .isString()
@@ -166,6 +170,7 @@ const updateTravelerValidator = [
 module.exports = {
   tripIdParamValidator,
   travelerIdParamValidator,
+  contactIdParamValidator,
   createTravelerValidator,
   updateTravelerValidator,
 };

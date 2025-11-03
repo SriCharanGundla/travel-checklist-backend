@@ -9,6 +9,7 @@ const collaboratorRoutes = require('./collaborator.routes');
 const shareLinkRoutes = require('./share-link.routes');
 const expenseRoutes = require('./expense.routes');
 const itineraryRoutes = require('./itinerary.routes');
+const travelerDirectoryRoutes = require('./traveler-directory.routes');
 
 const router = express.Router();
 
@@ -22,5 +23,6 @@ router.use(collaboratorRoutes);
 router.use(shareLinkRoutes);
 router.use(expenseRoutes);
 router.use(itineraryRoutes);
+router.use(travelerDirectoryRoutes);
 
 module.exports = router;

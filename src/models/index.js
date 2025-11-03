@@ -33,6 +33,7 @@ db.RefreshToken = require('./RefreshToken')(sequelize, DataTypes);
 db.Trip = require('./Trip')(sequelize, DataTypes);
 db.PasswordResetToken = require('./PasswordResetToken')(sequelize, DataTypes);
 db.Traveler = require('./Traveler')(sequelize, DataTypes);
+db.TravelerContact = require('./TravelerContact')(sequelize, DataTypes);
 db.Document = require('./Document')(sequelize, DataTypes);
 db.ChecklistCategory = require('./ChecklistCategory')(sequelize, DataTypes);
 db.ChecklistItem = require('./ChecklistItem')(sequelize, DataTypes);
