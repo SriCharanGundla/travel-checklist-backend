@@ -1,4 +1,4 @@
-const { Traveler, Document, ChecklistItem } = require('../models');
+const { Traveler, Document, ChecklistItem, TravelerContact } = require('../models');
 const AppError = require('../utils/AppError');
 const { PERMISSION_LEVELS } = require('../config/constants');
 const { ensureTripAccess } = require('./authorizationService');
@@ -81,27 +81,84 @@ const listTravelers = async (userId, tripId) => {
   return travelers.map((traveler) => traveler.get({ plain: true }));
 };
 
+const ensureContactForUser = async (userId, contactId) => {
+  if (!contactId) {
+    return null;
+  }
+
+  const contact = await TravelerContact.findOne({
+    where: {
+      id: contactId,
+      userId,
+    },
+  });
+
+  if (!contact) {
+    throw new AppError('Traveler contact not found', 404, 'TRAVELER_CONTACT.NOT_FOUND');
+  }
+
+  return contact;
+};
+
 const createTraveler = async (userId, tripId, payload) => {
   await ensureTripPermission(userId, tripId, PERMISSION_LEVELS.EDIT);
 
+  const contactId =
+    typeof payload.contactId === 'string' && payload.contactId.trim()
+      ? payload.contactId.trim()
+      : null;
+  const contact = await ensureContactForUser(userId, contactId);
+  if (contactId) {
+    const duplicate = await Traveler.findOne({
+      where: {
+        tripId,
+        contactId,
+      },
+    });
+
+    if (duplicate) {
+      throw new AppError(
+        'This traveler is already part of the trip.',
+        409,
+        'TRAVELER.DUPLICATE_CONTACT'
+      );
+    }
+  }
+
+  const contactData = contact ? contact.get({ plain: true }) : null;
+  const getField = (field) => {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      return payload[field];
+    }
+    return contactData ? contactData[field] : undefined;
+  };
+  const resolveString = (field) => toNullableString(getField(field));
+
+  const fullNameInput = getField('fullName');
+  const fullName =
+    typeof fullNameInput === 'string' && fullNameInput.trim()
+      ? fullNameInput.trim()
+      : (() => {
+          throw new AppError('Traveler name is required', 400, 'TRAVELER.NAME_REQUIRED');
+        })();
+
+  const birthdate = normalizeDate(getField('birthdate'), 'birthdate');
+  const passportExpiry = normalizeDate(getField('passportExpiry'), 'passportExpiry');
+
   const traveler = await Traveler.create({
     tripId,
-    fullName:
-      typeof payload.fullName === 'string' && payload.fullName.trim()
-        ? payload.fullName.trim()
-        : (() => {
-            throw new AppError('Traveler name is required', 400, 'TRAVELER.NAME_REQUIRED');
-          })(),
-    preferredName: toNullableString(payload.preferredName),
-    email: toNullableString(payload.email),
-    phone: toNullableString(payload.phone),
-    birthdate: normalizeDate(payload.birthdate, 'birthdate'),
-    passportNumber: toNullableString(payload.passportNumber),
-    passportCountry: toNullableString(payload.passportCountry),
-    passportExpiry: normalizeDate(payload.passportExpiry, 'passportExpiry'),
-    emergencyContactName: toNullableString(payload.emergencyContactName),
-    emergencyContactPhone: toNullableString(payload.emergencyContactPhone),
-    notes: toNullableString(payload.notes),
+    contactId,
+    fullName,
+    preferredName: resolveString('preferredName'),
+    email: resolveString('email'),
+    phone: resolveString('phone'),
+    birthdate,
+    passportNumber: resolveString('passportNumber'),
+    passportCountry: resolveString('passportCountry'),
+    passportExpiry,
+    emergencyContactName: resolveString('emergencyContactName'),
+    emergencyContactPhone: resolveString('emergencyContactPhone'),
+    notes: resolveString('notes'),
   });
 
   return traveler.get({ plain: true });

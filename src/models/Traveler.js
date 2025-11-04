@@ -14,6 +14,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         field: 'trip_id',
       },
+      contactId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'contact_id',
+      },
       fullName: {
         type: DataTypes.STRING(150),
         allowNull: false,
@@ -154,6 +159,11 @@ module.exports = (sequelize, DataTypes) => {
     Traveler.hasMany(models.ChecklistItem, {
       as: 'assignedItems',
       foreignKey: 'assigneeTravelerId',
+    });
+
+    Traveler.belongsTo(models.TravelerContact, {
+      as: 'sourceContact',
+      foreignKey: 'contactId',
     });
   };
 

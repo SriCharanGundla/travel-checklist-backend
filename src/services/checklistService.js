@@ -133,37 +133,62 @@ const getChecklistBoard = async (userId, tripId) => {
 
   const categories = await ChecklistCategory.findAll({
     where: { tripId },
-    include: [
-      {
-        model: ChecklistItem,
-        as: 'items',
-        include: [
-          {
-            model: Traveler,
-            as: 'assignee',
-            attributes: [
-              'id',
-              'tripId',
-              'fullName',
-              'preferredName',
-              'passportNumber',
-              'passportExpiry',
-            ],
-          },
-        ],
-        order: [
-          ['sortOrder', 'ASC'],
-          ['createdAt', 'ASC'],
-        ],
-      },
-    ],
     order: [
       ['sortOrder', 'ASC'],
       ['createdAt', 'ASC'],
     ],
   });
 
-  return categories.map((category) => category.get({ plain: true }));
+  const plainCategories = categories.map((category) => ({
+    ...category.get({ plain: true }),
+    items: [],
+  }));
+
+  const categoryIds = plainCategories.map((category) => category.id);
+  if (!categoryIds.length) {
+    return plainCategories;
+  }
+
+  const items = await ChecklistItem.findAll({
+    where: {
+      categoryId: {
+        [Op.in]: categoryIds,
+      },
+    },
+    include: [
+      {
+        model: Traveler,
+        as: 'assignee',
+        attributes: [
+          'id',
+          'tripId',
+          'fullName',
+          'preferredName',
+          'passportNumber',
+          'passportExpiry',
+        ],
+      },
+    ],
+    order: [
+      ['categoryId', 'ASC'],
+      ['sortOrder', 'ASC'],
+      ['createdAt', 'ASC'],
+    ],
+  });
+
+  const itemsByCategory = new Map();
+  items.forEach((item) => {
+    const plainItem = item.get({ plain: true });
+    if (!itemsByCategory.has(plainItem.categoryId)) {
+      itemsByCategory.set(plainItem.categoryId, []);
+    }
+    itemsByCategory.get(plainItem.categoryId).push(plainItem);
+  });
+
+  return plainCategories.map((category) => ({
+    ...category,
+    items: itemsByCategory.get(category.id) || [],
+  }));
 };
 
 const createCategory = async (userId, tripId, payload) => {
@@ -181,7 +206,7 @@ const createCategory = async (userId, tripId, payload) => {
   const category = await ChecklistCategory.sequelize.transaction(async (transaction) => {
     const slug = await generateUniqueSlug(tripId, baseSlug, transaction);
 
-    const maxSortOrder = await ChecklistCategory.max('sortOrder', {
+    const maxSortOrder = await ChecklistCategory.unscoped().max('sortOrder', {
       where: { tripId },
       transaction,
     });
@@ -297,7 +322,7 @@ const createItem = async (userId, categoryId, payload) => {
     assignee = await ensureTravelerForTrip(category.tripId, payload.assigneeTravelerId);
   }
 
-  const maxSortOrder = await ChecklistItem.max('sortOrder', {
+  const maxSortOrder = await ChecklistItem.unscoped().max('sortOrder', {
     where: { categoryId },
   });
 

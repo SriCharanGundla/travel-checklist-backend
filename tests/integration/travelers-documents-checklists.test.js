@@ -3,6 +3,7 @@ const tripService = require('../../src/services/tripService');
 const travelerService = require('../../src/services/travelerService');
 const documentService = require('../../src/services/documentService');
 const checklistService = require('../../src/services/checklistService');
+const travelerDirectoryService = require('../../src/services/travelerDirectoryService');
 const { DEFAULT_CHECKLIST_CATEGORY_DEFINITIONS } = require('../../src/config/constants');
 
 const context = { ipAddress: '127.0.0.1', userAgent: 'jest-test-suite' };
@@ -67,6 +68,33 @@ describe('Travelers, Documents, and Checklists Service Integration', () => {
 
     const afterDelete = await travelerService.listTravelers(ownerId, trip.id);
     expect(afterDelete).toHaveLength(0);
+  });
+
+  it('allows re-adding a directory traveler after soft deletion', async () => {
+    const ownerId = await registerOwner();
+    const contact = await travelerDirectoryService.createContact(ownerId, {
+      fullName: 'Aditya Vardhan Gundla',
+      preferredName: 'Aditya',
+      phone: '8106938231',
+    });
+
+    const trip = await tripService.createTrip(ownerId, {
+      name: 'Directory Sync',
+      destination: 'Hyderabad',
+    });
+
+    const firstTraveler = await travelerService.createTraveler(ownerId, trip.id, {
+      contactId: contact.id,
+    });
+
+    await travelerService.deleteTraveler(ownerId, trip.id, firstTraveler.id);
+
+    const secondTraveler = await travelerService.createTraveler(ownerId, trip.id, {
+      contactId: contact.id,
+    });
+
+    expect(secondTraveler).toBeTruthy();
+    expect(secondTraveler.contactId).toBe(contact.id);
   });
 
   it('aggregates documents for travelers', async () => {

@@ -2,6 +2,8 @@ const authService = require('../../src/services/authService');
 const tripService = require('../../src/services/tripService');
 const expenseService = require('../../src/services/expenseService');
 const { exportTripData } = require('../../src/services/exportService');
+const { Trip, TripCollaborator } = require('../../src/models');
+const { PERMISSION_LEVELS, COLLABORATOR_STATUS } = require('../../src/config/constants');
 const AppError = require('../../src/utils/AppError');
 
 const context = { ipAddress: '127.0.0.1', userAgent: 'jest-test-suite' };
@@ -106,5 +108,50 @@ describe('Trip Service Integration', () => {
     const csvString = csvExport.buffer.toString('utf-8');
     expect(csvString).toContain('Expenses');
     expect(csvString).toContain('Cafe Central');
+  });
+
+  it('allows admin collaborators to delete a trip', async () => {
+    const ownerId = await registerUser({ email: 'owner-admin-delete@example.com' });
+    const adminId = await registerUser({ email: 'collab-admin@example.com' });
+    const trip = await tripService.createTrip(ownerId, createTripPayload({ name: 'Admin Deletion Trip' }));
+
+    await TripCollaborator.create({
+      tripId: trip.id,
+      userId: adminId,
+      inviterId: ownerId,
+      email: 'collab-admin@example.com',
+      permissionLevel: PERMISSION_LEVELS.ADMIN,
+      status: COLLABORATOR_STATUS.ACCEPTED,
+      invitedAt: new Date(),
+      respondedAt: new Date(),
+    });
+
+    await tripService.deleteTrip(adminId, trip.id);
+
+    const remainingTrips = await tripService.listTrips(ownerId, {});
+    expect(remainingTrips).toHaveLength(0);
+    const deletedTrip = await Trip.findByPk(trip.id);
+    expect(deletedTrip).toBeNull();
+  });
+
+  it('prevents non-admin collaborators from deleting a trip', async () => {
+    const ownerId = await registerUser({ email: 'owner-edit-delete@example.com' });
+    const collaboratorId = await registerUser({ email: 'collab-edit@example.com' });
+    const trip = await tripService.createTrip(ownerId, createTripPayload({ name: 'Edit Forbidden Trip' }));
+
+    await TripCollaborator.create({
+      tripId: trip.id,
+      userId: collaboratorId,
+      inviterId: ownerId,
+      email: 'collab-edit@example.com',
+      permissionLevel: PERMISSION_LEVELS.EDIT,
+      status: COLLABORATOR_STATUS.ACCEPTED,
+      invitedAt: new Date(),
+      respondedAt: new Date(),
+    });
+
+    await expect(tripService.deleteTrip(collaboratorId, trip.id)).rejects.toThrow(AppError);
+    const tripStillExists = await Trip.findByPk(trip.id);
+    expect(tripStillExists).not.toBeNull();
   });
 });

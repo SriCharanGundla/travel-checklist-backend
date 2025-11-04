@@ -303,8 +303,10 @@ const updateTrip = async (userId, tripId, updates) => {
   });
 };
 
-const deleteTrip = async (ownerId, tripId) => {
-  const { trip } = await ensureTripOwner(ownerId, tripId);
+const deleteTrip = async (userId, tripId) => {
+  const { trip } = await ensureTripAccess(userId, tripId, {
+    requiredPermission: PERMISSION_LEVELS.ADMIN,
+  });
 
   await trip.destroy();
 };

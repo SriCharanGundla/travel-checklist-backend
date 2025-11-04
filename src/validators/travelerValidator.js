@@ -23,6 +23,10 @@ const contactIdParamValidator = [
 ];
 
 const createTravelerValidator = [
+  body('contactId')
+    .optional({ checkFalsy: true, nullable: true })
+    .isUUID()
+    .withMessage('contactId must be a valid UUID'),
   body('fullName')
     .isString()
     .withMessage('fullName is required')
