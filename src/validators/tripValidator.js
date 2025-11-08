@@ -150,6 +150,11 @@ const createTripValidator = [
     .isString()
     .withMessage('Notes must be text')
     .customSanitizer(sanitizeNullableString),
+  body('documentsModuleEnabled')
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage('documentsModuleEnabled must be a boolean')
+    .toBoolean(),
 ];
 
 const updateTripValidator = [
@@ -242,6 +247,11 @@ const updateTripValidator = [
     .isString()
     .withMessage('Notes must be text')
     .customSanitizer(sanitizeNullableString),
+  body('documentsModuleEnabled')
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage('documentsModuleEnabled must be a boolean')
+    .toBoolean(),
 ];
 
 const exportTripValidator = [

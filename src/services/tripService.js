@@ -37,6 +37,20 @@ const toCurrency = (currency, fallback = 'USD') => {
   return value;
 };
 
+const toBooleanFlag = (value, fallback = false) => {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+
+  return Boolean(value);
+};
+
 const toBudgetAmount = (amount, fallback = 0) => {
   if (amount === undefined || amount === null || amount === '') {
     return fallback;
@@ -72,6 +86,10 @@ const validateDateRange = (startDate, endDate) => {
 
 const buildTripResponse = (tripInstance, context = {}) => {
   const plain = tripInstance.get({ plain: true });
+
+  if (plain.documentsModuleEnabled === undefined) {
+    plain.documentsModuleEnabled = false;
+  }
 
   if (plain.collaborators) {
     delete plain.collaborators;
@@ -203,6 +221,7 @@ const createTrip = async (ownerId, payload) => {
         budgetAmount: toBudgetAmount(payload.budgetAmount),
         description: toNullableString(payload.description),
         notes: toNullableString(payload.notes),
+        documentsModuleEnabled: toBooleanFlag(payload.documentsModuleEnabled, false),
       },
       { transaction }
     );
@@ -293,6 +312,10 @@ const updateTrip = async (userId, tripId, updates) => {
 
   if (Object.prototype.hasOwnProperty.call(updates, 'notes')) {
     trip.set('notes', toNullableString(updates.notes));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'documentsModuleEnabled')) {
+    trip.set('documentsModuleEnabled', toBooleanFlag(updates.documentsModuleEnabled, trip.documentsModuleEnabled));
   }
 
   await trip.save();

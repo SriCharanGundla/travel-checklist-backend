@@ -163,6 +163,13 @@ const createDocument = async (userId, travelerId, payload) => {
     notes: toNullableString(payload.notes),
   });
 
+  await Trip.update(
+    { documentsModuleEnabled: true },
+    {
+      where: { id: traveler.tripId },
+    }
+  );
+
   return toSafeDocument(document);
 };
 

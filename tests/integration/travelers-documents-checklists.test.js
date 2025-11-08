@@ -122,6 +122,9 @@ describe('Travelers, Documents, and Checklists Service Integration', () => {
     expect(document.hasVaultFile).toBe(false);
     expect(document.vaultHost).toBeNull();
 
+    const refreshedTrip = await tripService.getTripById(ownerId, trip.id);
+    expect(refreshedTrip.documentsModuleEnabled).toBe(true);
+
     const documents = await documentService.listDocumentsByTrip(ownerId, trip.id);
     expect(documents).toHaveLength(1);
     expect(documents[0].traveler.fullName).toBe('Morgan Lee');

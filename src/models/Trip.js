@@ -62,6 +62,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      documentsModuleEnabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'documents_module_enabled',
+      },
     },
     {
       tableName: 'trips',

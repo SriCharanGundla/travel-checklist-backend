@@ -32,6 +32,7 @@ describe('tripService unit', () => {
     expect(trip.type).toBe('leisure');
     expect(Number(trip.budgetAmount)).toBeCloseTo(1200.51);
     expect(trip.budgetCurrency).toBe('EUR');
+    expect(trip.documentsModuleEnabled).toBe(false);
     expect(trip.permission).toEqual({ role: 'owner', level: 'admin' });
   });
 
@@ -75,6 +76,18 @@ describe('tripService unit', () => {
         endDate: '2025-06-15',
       })
     ).rejects.toThrow(AppError);
+  });
+
+  it('updates the documents module flag independently', async () => {
+    const trip = await tripService.createTrip(ownerId, {
+      name: 'Toggle Docs',
+    });
+
+    const updated = await tripService.updateTrip(ownerId, trip.id, {
+      documentsModuleEnabled: true,
+    });
+
+    expect(updated.documentsModuleEnabled).toBe(true);
   });
 });
 
